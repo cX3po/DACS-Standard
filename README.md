@@ -78,13 +78,13 @@ substrate-to-primitive mapping and production status.
 
 | Path | What it is |
 |------|------------|
-| [`spec/`](./spec/) | **The standard.** Full normative specification, DACS-1 … DACS-5, with conformance rules, error classes, threat model, and conformance test plan. |
+| [`spec/SPECIFICATION.md`](./spec/SPECIFICATION.md) | **The standard.** Full normative specification, DACS-1 … DACS-5, with conformance rules, error classes, threat model, and conformance test plan. |
 | [`docs/builders-guide.md`](./docs/builders-guide.md) | A technical case for builders — what problems DACS solves and how to evaluate it honestly. |
 | [`docs/flow-trace.md`](./docs/flow-trace.md) | End-to-end happy path traced against the real Demos SDK, with a sequence diagram. |
 | [`CHANGELOG.md`](./CHANGELOG.md) | Normative change history. Start here if you implemented against an earlier draft. |
 
 **New here?** Read the [builders guide](./docs/builders-guide.md) first, then the
-[flow trace](./docs/flow-trace.md), then the [specification](./spec/).
+[flow trace](./docs/flow-trace.md), then the [specification](./spec/SPECIFICATION.md).
 
 ---
 

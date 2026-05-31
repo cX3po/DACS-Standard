@@ -4,7 +4,13 @@ This directory holds the authoritative DACS standard.
 
 | File | Description |
 |------|-------------|
-| [`DACS-Specification-v0.1.docx`](./DACS-Specification-v0.1.docx) | The full normative specification — Introduction and DACS-1 through DACS-5, with global terminology, substrate-capability definitions (SR-1…SR-5), the Demos production mapping, conformance summaries, threat model, and conformance test plan. |
+| [`SPECIFICATION.md`](./SPECIFICATION.md) | **Browsable edition** — the full standard rendered as Markdown so it reads, links, and diffs directly on GitHub. This is the recommended way to read the spec. |
+| [`DACS-Specification-v0.1.docx`](./DACS-Specification-v0.1.docx) | **Formatting-faithful edition** — the same content as a Word document (comment-free, tracked changes accepted). Use if you need the original layout. |
+
+Both editions carry identical normative content: Introduction and DACS-1 through
+DACS-5, with global terminology, substrate-capability definitions (SR-1…SR-5), the
+Demos production mapping, conformance summaries, threat model, and conformance test
+plan.
 
 **Normative language.** The specification uses the RFC 2119 / RFC 8174 keywords
 (MUST, SHOULD, MAY, …), normative only when uppercase.
@@ -13,7 +19,7 @@ This directory holds the authoritative DACS standard.
 See the [CHANGELOG](../CHANGELOG.md) for normative change history and a migration
 list for anyone who implemented against an earlier draft.
 
-A browser-rendered Markdown/HTML edition of the specification is planned; until then
-the `.docx` is the source of record. For an architectural read without opening the
-full spec, start with the [builders guide](../docs/builders-guide.md) and the
-[flow trace](../docs/flow-trace.md).
+> The Markdown edition is auto-derived from the source document. If you spot a
+> rendering artifact (a table that didn't convert cleanly, a mis-levelled heading),
+> please [open an issue](https://github.com/DACS-Agent-commerce/DACS-Standard/issues)
+> — the `.docx` is the tie-breaker for content.
