@@ -2173,7 +2173,7 @@ type PricingSpec =
 
 type PriceTerm = {
 
-  amount: string                       // decimal as string, full precision
+  amount: string                       // decimal as string, full precision; MUST be positive (see normative rule below §9.3)
 
   currency: string                     // ISO 4217 fiat OR asset id (e.g. "usd-stablecoin", "USDC", "SOL")
 
@@ -2225,6 +2225,8 @@ type ChainTxRef =
 
   | { kind: "liquidity-tank"; bridgeId: string; sourceChainId: number; destChainId: number; lockTxHash: string; releaseTxHash?: string }
 ```
+
+`PriceTerm.amount` MUST be a positive decimal: it MUST parse to a finite value strictly greater than zero, and MUST NOT be NaN, infinite, or negative. Because `PriceTerm` is the canonical economic primitive consumed by automated winner-selection over adversarial bids (§8.4.3), band validation (§8.5.2), and on-chain amount construction (§9.5.2), conformant implementations MUST reject any bid, listing price, or agreed price whose `amount` is non-positive — before applying `selectionRule` and before commit-agreement. A revealed bid that violates this constraint MUST be excluded from the candidate set rather than selected as a `lowest-price` winner.
 
 ### 9.4 Payment rail registry
 
