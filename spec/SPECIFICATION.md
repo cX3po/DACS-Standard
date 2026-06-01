@@ -2714,7 +2714,7 @@ type SessionState =
 
   | "negotiate-pending" | "negotiate-completed" | "negotiate-failed"
 
-  | "commit-pending" | "commit-completed"
+  | "commit-pending" | "commit-completed" | "commit-failed"
 
   | "settle-pending" | "settle-completed" | "settle-failed"
 
@@ -2756,6 +2756,7 @@ type PhaseEntry = {
 #### 10.3.1 State transitions
 
 Transitions are deterministic. The orchestrator MUST: advance state only when the corresponding phase returns ok: true; on phase ok: false, transition to the appropriate failed-* state and classify per the phase’s errorClass; never reverse state direction within a session (failures end the session; new sessions get new jobIds).
+A commit-agreement rejection (a CA-3 re-commitment for an already-anchored jobId, or an agreement failing the §8.5.2 listing-conformance checks) returns ok: false and MUST transition the session to commit-failed, classified per the phase's errorClass; this is the appropriate failed-* state for the commit phase and is forward-only (it MUST NOT be folded back into negotiate-failed). A commit-failed session is summarised in the AttestationBundle via the existing outcome buckets (failed-perm or failed-counterparty per errorClass); no commit-specific outcome value is required.
 **Substrate-failure pause.** On errorClass: "substrate" (SR-2 or SR-3 unavailable, etc.), the orchestrator MAY transition to substrate-failure-paused and retry per a backoff schedule. Pauses MUST be time-bounded; after a per-listing maximum pause (default 3600 seconds), the session MUST transition to failed-substrate.
 
 #### 10.3.2 Persistence and visibility
