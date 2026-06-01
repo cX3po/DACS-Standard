@@ -3216,6 +3216,7 @@ Every per-chapter security threat, indexed by adversary class and mitigation sta
 | Method substitution | malicious verifier | §7.12 (method field comparison) | mitigated |
 | Recipe poisoning | recipe-registry attacker | §7.12 (signed recipes + pinned recipeVersion) | mitigated |
 | Substrate validator capture (SR-3) | substrate validator-set majority | §7.12 (multi-method alternatives) | partial — v0.2 strengthening planned |
+| Authority-endpoint TLS MITM (forged authority response) | network active attacker (PKI compromise) | §7.3.5 (v0.2 validator-body-signed) + §7.4 (multi-method alternatives) | partial — v0.2 strengthening planned, residual in v0.1 |
 | VerifyResult replay | malicious verifier | §7.12 (identifier + bundle hash binding) | mitigated |
 | TOCTOU authority change | time | §7.12 (maxAge tightening) | parameter-driven |
 | Indeterminate exploitation | malicious counterparty | §7.5.1 + §7.7.1 (aggregation) | mitigated |
