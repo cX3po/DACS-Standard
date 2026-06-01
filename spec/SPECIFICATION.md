@@ -1450,15 +1450,16 @@ aggregate(record, requirement):
 
     if not any(find_passing(record, cr.scheme) for cr in group):
 
-      # Distinguish indeterminate vs error vs hard miss for the group
+      # Distinguish error vs indeterminate vs hard miss for the group
+      # (error before indeterminate, matching the global precedence below)
 
-      if any(find_indeterminate(record, cr.scheme) for cr in group):
-
-        indeterminates.append("oneOf group: at least one claim indeterminate")
-
-      else if any(find_error(record, cr.scheme) for cr in group):
+      if any(find_error(record, cr.scheme) for cr in group):
 
         errors.append("oneOf group: at least one claim errored")
+
+      else if any(find_indeterminate(record, cr.scheme) for cr in group):
+
+        indeterminates.append("oneOf group: at least one claim indeterminate")
 
       else:
 
@@ -1494,15 +1495,15 @@ classify_required(record, cr, failures, errors, indeterminates):
 
     return
 
-  if any(r.decision == "indeterminate" for r in results):
+  if any(r.decision == "error" for r in results):
 
-    indeterminates.append("required indeterminate: " + cr.scheme)
+    errors.append("required errored: " + cr.scheme)
 
     return
 
-  // all results are "error"
+  // remaining results are "indeterminate"
 
-  errors.append("required errored: " + cr.scheme)
+  indeterminates.append("required indeterminate: " + cr.scheme)
 ```
 
 Supplementary signals MUST NOT change overallDecision from pass to fail automatically; they are informational. A listing MAY declare in terms that specific signals are gating (e.g. minimum reputation score); when so declared, the gating check is treated as a deal-specific claim and runs through the same aggregation. The four classifications carry distinct diagnostic value: "required not present" (no VerifyResult at all), "required failing" (authority said no), "required indeterminate" (authority answered ambiguously), "required errored" (verifier could not reach authority). Consumers debugging or auditing a failed session can read the failure reasons to determine which class the failure belongs to.
