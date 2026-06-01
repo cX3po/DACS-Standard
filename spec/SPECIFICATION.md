@@ -502,13 +502,15 @@ match(bundle, requirement):
 
   3b. If requirement.primaryClaimSelector is set:
 
-       // presentedBy MUST be a *verified* claim of the selector scheme, not merely structurally present.
+       // The exact claim presentedBy resolves to MUST itself be verified — not merely some claim of the selector scheme.
 
-       // Otherwise a presenter could laundry reputation into an unverified (or third-party) selector-scheme claim.
+       // Otherwise a presenter could launder reputation by pairing an unverified (or third-party) presentedBy identifier with a *different*, already-verified claim of the same scheme.
 
-       if NOT find_claim(bundle, { scheme: requirement.primaryClaimSelector, verificationRequired: true })
+       presented := the claim c in bundle.claims whose c.ref matches bundle.presentedBy by canonical scheme AND identifier (the §6.3.2 presentedBy resolution rule)
 
-          matching bundle.presentedBy by canonical scheme and identifier: return REJECT
+       if presented is null: return REJECT   // presentedBy does not resolve to a claim in the bundle
+
+       if presented.verifiedBy missing OR resolution fails OR presented.verifiedBy.decision != "pass": return REJECT
 
   4. If requirement.preferredPresentation is set AND != "any":
 
