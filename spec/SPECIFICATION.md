@@ -1148,6 +1148,12 @@ type Recipe = {
 
   retryClass: "transient" | "permanent"
 
+  retryOnIndeterminate?: boolean              // default false; see §7.6.1 VP-R4
+
+  retryBudget?: number                        // recipe-defined retry budget for transient error; default 3 (see §7.6.1 VP-R1)
+
+  backoff?: { strategy: "exponential" | "fixed"; baseMs?: number }  // default exponential (see §7.6.1 VP-R1)
+
   availability: RecipeAvailability            // operational status (see §7.4.5)
 
   governance: {
@@ -1198,21 +1204,25 @@ type VerificationMethod =
 
   | { kind: "self-signed" }
 
+type IndeterminatePredicate =
+
+  | { jsonPath: string } | { selector: string } | { xPath: string } | { matcher: string }
+
 type ParserSpec =
 
-  | { format: "json"; successJsonPath: string; dataMap?: Record<string, string> }
+  | { format: "json"; successJsonPath: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "html"; successSelector: string; dataMap?: Record<string, string> }
+  | { format: "html"; successSelector: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "xml"; successXPath: string; dataMap?: Record<string, string> }
+  | { format: "xml"; successXPath: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "raw"; matcher: string }
+  | { format: "raw"; matcher: string; indeterminateOn?: IndeterminatePredicate[] }
 ```
 
 **ParserSpec semantics (normative).** Given the attested response body, a verifier applies the recipe’s ParserSpec to produce a decision and an optional extracted-data map:
 
 - (PS-1) **successJsonPath / successSelector / successXPath / matcher** is the *match predicate*. For `json`, it is a JSONPath that MUST select at least one node for a match; for `html`, a CSS selector that MUST select at least one element; for `xml`, an XPath that MUST select at least one node; for `raw`, `matcher` is a regular expression (RE2 syntax, no backreferences) that MUST find at least one match in the body.
-- (PS-2) **Decision mapping.** If the body parses in the declared format AND the match predicate matches → the method’s positive outcome (`pass` for a positive-match scheme such as `lei`; `fail` for a negative-match scheme such as `ofac-clear`, where a match means "listed"; the recipe’s `negativeMatch: true` flag selects this inversion). If the body parses but the predicate does not match → the negative outcome (`fail`, or `pass` for a negative-match scheme). If the body does NOT parse in the declared format (malformed JSON/HTML/XML, parser exception) → `error` (verifier-side failure to obtain a decision), never `fail`. A response the authority returns to signal "no conclusive answer" (e.g. an explicit pending/partial-record marker the recipe lists in `indeterminateOn`) → `indeterminate`.
+- (PS-2) **Decision mapping.** If the body parses in the declared format AND the match predicate matches → the method’s positive outcome (`pass` for a positive-match scheme such as `lei`; `fail` for a negative-match scheme such as `ofac-clear`, where a match means "listed"; the recipe’s `negativeMatch: true` flag selects this inversion). If the body parses but the predicate does not match → the negative outcome (`fail`, or `pass` for a negative-match scheme). If the body does NOT parse in the declared format (malformed JSON/HTML/XML, parser exception) → `error` (verifier-side failure to obtain a decision), never `fail`. A response the authority returns to signal "no conclusive answer" (e.g. an explicit pending/partial-record marker the recipe lists in `indeterminateOn`) → `indeterminate`. The `indeterminateOn` predicates, when present, are evaluated against the parsed body BEFORE the match predicate; if any of them matches, the decision is `indeterminate` and the match predicate is not applied. Each predicate uses the expression kind appropriate to the declared `format` (`jsonPath` for `json`, `selector` for `html`, `xPath` for `xml`, `matcher` for `raw`).
 - (PS-3) **dataMap** maps output field names to JSONPath/selector/XPath expressions evaluated against the same body; each resolved value is recorded in the VerifyResult’s extracted data for audit. A `dataMap` expression that resolves to nothing is recorded as null and MUST NOT by itself change the decision.
 - (PS-4) Parser evaluation MUST be deterministic and MUST NOT execute scripts, fetch sub-resources, or follow redirects embedded in the body.
 
