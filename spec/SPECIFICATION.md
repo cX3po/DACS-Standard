@@ -443,6 +443,7 @@ A verifiedBy reference is stale when now > BundleClaim.expiresAt, or, when expir
 **Conformance — bundles**
 A conforming bundle producer MUST: (BP-1) produce JCS-canonical serialisation for hashing and signing; (BP-2) include at least one claim; (BP-3) provide presentedBy that resolves to a claim; (BP-4) provide a presentation signature that verifies against the bundle hash.
 A conforming bundle reader MUST: (BR-1) recompute the bundle hash from canonical form before signature check; (BR-2) reject a bundle whose presentation signature does not verify; (BR-3) reject a bundle in which a required (per listing) claim has a missing or invalid verifiedBy when verificationRequired = true; (BR-4) treat claims with unknown schemes as unverified.
+**Selective disclosure (scope note).** v0.1 provides no per-claim selective-disclosure mechanism at the bundle layer: there is no per-claim blinding, no commitment-with-open-on-demand, and no proof-of-possession-without-disclosure for a claim a listing did not require. A verifier that receives a bundle sees every claim in `claims[]`, and the `presentedBy` primary claim is always disclosed and is the cross-session correlator used for reputation and audit (§6.4, §6.3.4). The DACS-2 zkTLS / TLSNotary methods (§7.2) protect the secret *inside* a claim's verification; they do NOT conceal *which* claims a party holds from a counterparty. The only minimisation available in v0.1 is presenter-side: a presenter MAY publish a bundle containing only the claims a given listing requires, accepting that the primary claim remains linkable across presentations. Implementers MUST NOT treat DACS-1 + a privacy-preserving DACS-2 method as an end-to-end selective-disclosure guarantee. Blinded / minimised-claim presentation is a named follow-on item (§11.2.7).
 
 #### 6.3.3 Bundle requirement schema
 
@@ -3119,7 +3120,7 @@ DACS composes with the existing open ecosystem and does not seek to replace stan
 
 ### 11.2 Follow-on topics
 
-Five areas are deliberately out of scope for v0.1 and intended for subsequent standards.
+Six areas are deliberately out of scope for v0.1 and intended for subsequent standards.
 
 #### 11.2.1 Dispute resolution (DACS-X, anticipated)
 
@@ -3144,6 +3145,10 @@ Each per-stage standard specifies forward-compatibility within itself (a later-m
 #### 11.2.6 Multi-party governance and registry stewardship
 
 The transition from single-steward (PA-2) to multi-party constituted governance (PA-3) for the recipe and rail registries is itself follow-on work. v0.1 does not specify the constitution mechanism, multi-signature thresholds, sub-authority delegation, or transition procedure. These are open questions for the working group that the ecosystem chooses to constitute. Until that body exists, the current steward operates under the disclosure rules in §11.1.1.
+
+#### 11.2.7 Selective-disclosure / minimised-claim presentation
+
+v0.1 discloses a presented bundle's full `claims[]` set and its `presentedBy` primary claim to every counterparty (§6.3.2 scope note). The DACS-2 zkTLS / TLSNotary methods hide the secret inside a claim's verification but not which claims a party holds. A follow-on standard is anticipated to add bundle-layer selective disclosure — per-claim blinding, commitments with selective open, proof-of-possession-without-disclosure, and an unlinkable or rotating primary-claim presentation that preserves reputation continuity without exposing the durable high-tier identity in low-stakes interactions. Until then, the only minimisation is presenter-side bundle pruning, with the linkability caveat in §6.3.2.
 
 ### 11.3 Closing
 
