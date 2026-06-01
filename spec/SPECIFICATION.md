@@ -2984,14 +2984,20 @@ derive(party, bundles, windowStart, windowEnd):
 
                          when ratings_targeting_party_as_buyer else null
 
-  volume := groupSumByCurrency(b.agreementRef.terms.price
+  volume_terms := []
 
-                               for b in scoped where agreementRef present)
+  for b in scoped where agreementRef present:
+
+    agreement := fetch_and_verify_agreement(b.agreementRef)   // DACS-3 AgreementDocument
+
+    volume_terms.append(agreement.terms.price)
+
+  volume := groupSumByCurrency(volume_terms)
 
   return ReputationDerivation with computed metrics
 ```
 
-"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, verifying its signature, and aggregating the values whose target matches the scored party; the metric is null when no qualifying ratings exist.
+"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, verifying its signature, and aggregating the values whose target matches the scored party; the metric is null when no qualifying ratings exist. The observedTransactionalVolume metric is computed analogously: for each scoped bundle whose agreementRef is present, the deriver MUST resolve the AttestationRef to its AgreementDocument via fetch_and_verify_agreement(agreementRef) — fetching the anchor at agreementRef.anchor.locator, comparing the hashed bytes to agreementRef.contentHash (mismatch MUST cause that bundle to be excluded), and parsing the result as a DACS-3 AgreementDocument per the §7.5.2 attestation resolution algorithm — and then sum agreement.terms.price grouped by currency. agreementRef is an AttestationRef, not an inline AgreementDocument, so the volume step MUST dereference it before reading terms.price.
 
 #### 10.5.2 Per-primary-claim keying
 
