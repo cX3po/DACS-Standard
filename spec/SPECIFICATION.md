@@ -1148,6 +1148,12 @@ type Recipe = {
 
   retryClass: "transient" | "permanent"
 
+  retryOnIndeterminate?: boolean              // default false; see §7.6.1 VP-R4
+
+  retryBudget?: number                        // recipe-defined retry budget for transient error; default 3 (see §7.6.1 VP-R1)
+
+  backoff?: { strategy: "exponential" | "fixed"; baseMs?: number }  // default exponential (see §7.6.1 VP-R1)
+
   availability: RecipeAvailability            // operational status (see §7.4.5)
 
   governance: {
@@ -1157,6 +1163,20 @@ type Recipe = {
     acceptedAt: number
 
     supersedes?: number
+
+    anchoring: "in-code" | "single-signer" | "multisig"   // progressive-anchoring phase (PA-1/PA-2/PA-3); see §7.4.4
+
+    emergency?: {                              // present iff this is an emergency revision; see §7.4.4
+
+      isEmergency: true
+
+      failureObservation: string               // URL of authority change / observed response-format diff
+
+    }
+
+    deprecated?: boolean                       // true => MUST NOT start new sessions for required claims; see §7.4.4
+
+    deprecationReason?: string                 // required when deprecated is true
 
   }
 
@@ -1198,21 +1218,25 @@ type VerificationMethod =
 
   | { kind: "self-signed" }
 
+type IndeterminatePredicate =
+
+  | { jsonPath: string } | { selector: string } | { xPath: string } | { matcher: string }
+
 type ParserSpec =
 
-  | { format: "json"; successJsonPath: string; dataMap?: Record<string, string> }
+  | { format: "json"; successJsonPath: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "html"; successSelector: string; dataMap?: Record<string, string> }
+  | { format: "html"; successSelector: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "xml"; successXPath: string; dataMap?: Record<string, string> }
+  | { format: "xml"; successXPath: string; indeterminateOn?: IndeterminatePredicate[]; dataMap?: Record<string, string> }
 
-  | { format: "raw"; matcher: string }
+  | { format: "raw"; matcher: string; indeterminateOn?: IndeterminatePredicate[] }
 ```
 
 **ParserSpec semantics (normative).** Given the attested response body, a verifier applies the recipe’s ParserSpec to produce a decision and an optional extracted-data map:
 
 - (PS-1) **successJsonPath / successSelector / successXPath / matcher** is the *match predicate*. For `json`, it is a JSONPath that MUST select at least one node for a match; for `html`, a CSS selector that MUST select at least one element; for `xml`, an XPath that MUST select at least one node; for `raw`, `matcher` is a regular expression (RE2 syntax, no backreferences) that MUST find at least one match in the body.
-- (PS-2) **Decision mapping.** If the body parses in the declared format AND the match predicate matches → the method’s positive outcome (`pass` for a positive-match scheme such as `lei`; `fail` for a negative-match scheme such as `ofac-clear`, where a match means "listed"; the recipe’s `negativeMatch: true` flag selects this inversion). If the body parses but the predicate does not match → the negative outcome (`fail`, or `pass` for a negative-match scheme). If the body does NOT parse in the declared format (malformed JSON/HTML/XML, parser exception) → `error` (verifier-side failure to obtain a decision), never `fail`. A response the authority returns to signal "no conclusive answer" (e.g. an explicit pending/partial-record marker the recipe lists in `indeterminateOn`) → `indeterminate`.
+- (PS-2) **Decision mapping.** If the body parses in the declared format AND the match predicate matches → the method’s positive outcome (`pass` for a positive-match scheme such as `lei`; `fail` for a negative-match scheme such as `ofac-clear`, where a match means "listed"; the recipe’s `negativeMatch: true` flag selects this inversion). If the body parses but the predicate does not match → the negative outcome (`fail`, or `pass` for a negative-match scheme). If the body does NOT parse in the declared format (malformed JSON/HTML/XML, parser exception) → `error` (verifier-side failure to obtain a decision), never `fail`. A response the authority returns to signal "no conclusive answer" (e.g. an explicit pending/partial-record marker the recipe lists in `indeterminateOn`) → `indeterminate`. The `indeterminateOn` predicates, when present, are evaluated against the parsed body BEFORE the match predicate; if any of them matches, the decision is `indeterminate` and the match predicate is not applied. Each predicate uses the expression kind appropriate to the declared `format` (`jsonPath` for `json`, `selector` for `html`, `xPath` for `xml`, `matcher` for `raw`).
 - (PS-3) **dataMap** maps output field names to JSONPath/selector/XPath expressions evaluated against the same body; each resolved value is recorded in the VerifyResult’s extracted data for audit. A `dataMap` expression that resolves to nothing is recorded as null and MUST NOT by itself change the decision.
 - (PS-4) Parser evaluation MUST be deterministic and MUST NOT execute scripts, fetch sub-resources, or follow redirects embedded in the body.
 
@@ -1868,10 +1892,25 @@ type NegotiateSealedEnvelopeOutput = PhaseHandlerResult & {
 }
 ```
 
-**Procedure.** The orchestrator MUST: (1) establish SR-4 channels between the seller and each bidder; (2) **bidder commit phase** (before commitDeadline) — each bidder constructs a bid, computes bidHash = sha256(canonical_JCS(bid) || bidder_salt), and sends a sealed-envelope-commit message {bidHash, bidderClaim, commitTimestamp}; the commit message’s bidHash MUST also be anchored via SR-2; (3) at commitDeadline, no further commits are accepted; the orchestrator records the set of received commits; (4) **bidder reveal phase** (within revealWindow) — each bidder sends a sealed-envelope-reveal message {bid, salt} matching their prior bidHash; orchestrator verifies sha256(canonical_JCS(bid) || salt) == bidHash; mismatches cause exclusion; (5) **selection** — the orchestrator applies parameters.selectionRule; ties resolved by earliest commit timestamp; (6) construct the AgreementDocument from the winning bid with derivedFromPattern: "sealed-envelope" (losing bidders listed as bidder-non-winning parties; their signatures are not required); (7) anchor the agreement and reveal records via SR-2.
+**Procedure.** The orchestrator MUST: (1) establish SR-4 channels between the seller and each bidder; (2) **bidder commit phase** (before commitDeadline) — each bidder constructs a bid and a fresh salt (per SE-7), computes bidHash = sha256("dacs-sealed-bid:v1:" || sha256(canonical_JCS(bid)) || salt) — the bid is hashed to a fixed 32-byte digest before concatenation so the bid/salt boundary is unambiguous, and the leading domain tag separates this commitment from any other sha256 usage — and sends a sealed-envelope-commit message {bidHash, bidderClaim, commitTimestamp}; the commit message’s bidHash MUST also be anchored via SR-2; (3) at commitDeadline, no further commits are accepted; the orchestrator records the set of received commits; (4) **bidder reveal phase** (within revealWindow) — each bidder sends a sealed-envelope-reveal message {bid, salt} matching their prior bidHash; orchestrator verifies sha256("dacs-sealed-bid:v1:" || sha256(canonical_JCS(bid)) || salt) == bidHash; mismatches cause exclusion; each accepted reveal record MUST also be anchored via SR-2 before revealWindow expiry, so that an objective anchor timestamp exists for SE-3 enforcement; (5) **selection** — the orchestrator applies parameters.selectionRule; ties resolved by earliest SR-2 anchor timestamp of the bidder's commit (the same objective, substrate-determined timestamp SE-2 uses for the deadline gate — *not* the self-reported commitTimestamp field), and any remaining ties (commits anchored in the same block / with equal anchor timestamps) resolved by ascending lexicographic order of bidHash; (6) construct the AgreementDocument from the winning bid with derivedFromPattern: "sealed-envelope" (losing bidders listed as bidder-non-winning parties; their signatures are not required); (7) anchor the agreement and reveal records via SR-2.
+**Sealed bid body schema**
+The body of a sealed-envelope-reveal message (the revealed `bid`, and therefore the value committed to in step 2) MUST conform to:
+```
+type SealedBid = {
+
+  price: PriceTerm                     // the bid amount and currency
+
+  deliverable?: DeliverableRef         // what the bidder undertakes to deliver
+
+  terms?: Record<string, unknown>      // additional pattern- or listing-specific terms
+
+}
+```
+The `bid` over which `bidHash` is computed in step (2) is exactly this `SealedBid` object in its RFC 8785 JCS canonical form. All bids in a single session MUST be denominated in the listing-declared currency; a revealed bid whose `price.currency` does not match MUST be excluded from selection.
+
 **Selection rules and the rule-ref binding requirement**
-parameters.selectionRule is one of: "lowest-price"; "highest-price"; "first-acceptable" (per listing-defined acceptance criteria); "rule-ref:<contentHash>:<uri>". For rule-ref, the rule MUST be anchored as a Storage Program (or fetched from an HTTPS URI and content-hash-bound). The URI is purely informational; the <contentHash> in the selection rule string is the authoritative binding. Orchestrators MUST fetch the rule at <uri> (or the substrate anchor), compute sha256 of the canonical form, and verify it matches <contentHash>. Mismatch MUST exclude the rule and fail the selection step with errorClass: permanent. This prevents a seller from changing the selection algorithm after bids have been submitted by changing the content served at <uri>.
-**Conformance.** (SE-1) commitDeadline MUST be at least 60 seconds in the future at session start. (SE-2) Every bidder commit MUST be anchored before commitDeadline; commits whose anchor timestamp is after commitDeadline MUST be excluded. (SE-3) Reveals MUST occur within revealWindow; late reveals MUST be excluded. (SE-4) Bidders failing reveal MUST be excluded from selection and MAY be marked with a failure-to-reveal reputation event (DACS-5). (SE-5) The selection rule MUST be deterministic; ties MUST resolve consistently. (SE-6) rule-ref selection rules MUST be content-hash-bound and the rule content MUST itself be deterministic given the bid set. **Substrate:** SR-2 + SR-4.
+parameters.selectionRule is one of: "lowest-price"; "highest-price"; "first-acceptable" (per listing-defined acceptance criteria); "rule-ref:<contentHash>:<uri>". For "lowest-price" and "highest-price", the orchestrator MUST order revealed bids by `bid.price.amount` (compared as a decimal, full precision) ascending or descending respectively. For "first-acceptable", the orchestrator MUST evaluate revealed bids in ascending commit-timestamp order against the listing-declared acceptance predicate and select the first that satisfies it. For rule-ref, the rule MUST be anchored as a Storage Program (or fetched from an HTTPS URI and content-hash-bound). The URI is purely informational; the <contentHash> in the selection rule string is the authoritative binding. Orchestrators MUST fetch the rule at <uri> (or the substrate anchor), compute sha256 of the canonical form, and verify it matches <contentHash>. Mismatch MUST exclude the rule and fail the selection step with errorClass: permanent. This prevents a seller from changing the selection algorithm after bids have been submitted by changing the content served at <uri>.
+**Conformance.** (SE-1) commitDeadline MUST be at least 60 seconds in the future at session start. (SE-2) Every bidder commit MUST be anchored before commitDeadline; commits whose anchor timestamp is after commitDeadline MUST be excluded. (SE-3) Every revealed bid MUST be anchored via SR-2 before revealWindow expiry; reveals whose anchor timestamp is after revealWindow expiry MUST be excluded. This mirrors SE-2: the substrate anchor timestamp — not a channel message's self-reported sentAt or the orchestrator's wall clock — is the authoritative clock that decides whether a reveal occurred in-window. (SE-4) Bidders failing reveal MUST be excluded from selection and MAY be marked with a failure-to-reveal reputation event (DACS-5). (SE-5) The selection rule MUST be deterministic; ties MUST resolve consistently. The tie-break MUST use the objective SR-2 anchor timestamp of each bidder's commit (the same clock as SE-2), MUST NOT use the self-reported commitTimestamp field, and MUST resolve same-anchor-timestamp ties by ascending lexicographic order of bidHash. (SE-6) rule-ref selection rules MUST be content-hash-bound and the rule content MUST itself be deterministic given the bid set. (SE-7) **Bid-commitment salt.** The `salt` used in the bidHash commitment MUST be generated from a cryptographically-secure random source with at least 256 bits (32 bytes) of entropy, MUST NOT be reused across bids or sessions, and MUST be carried on the wire as a base64url string so the bytes hashed are unambiguous to both committer and verifier; the commitment input is the raw decoded salt bytes. This closes the pre-reveal brute-force leak created by anchoring bidHash publicly (§8.12) for low-entropy structured bids, and aligns the sealed-envelope salt with the HTLC-1 salt discipline. **Substrate:** SR-2 + SR-4.
 
 ### 8.5 Agreement document
 
@@ -1971,13 +2010,13 @@ type AgreementSignature = {
 
 #### 8.5.1 Canonical serialisation and signature
 
-The agreement’s canonical form is the RFC 8785 JCS serialisation with the signatures field omitted. The agreement hash is sha256(canonical_form), hex-encoded. Each AgreementSignature.value is computed over the domain-separated payload per chapter 7§7.7:
+The agreement’s canonical form is the RFC 8785 JCS serialisation with the signatures field omitted. **Rule CD-1 (canonical decimal).** Because RFC 8785 JCS canonicalises JSON numbers but preserves string bytes verbatim, every `PriceTerm.amount` string MUST be in minimal-digit canonical decimal form: no leading zeros (except a single `0` before the decimal point), no trailing zeros after the decimal point, `.` as the only separator, no `+` sign, and no exponent. Producers MUST canonicalise `amount` per CD-1 before computing any agreement hash, `SettlementEvidence` hash, or other JCS hash; verifiers MUST canonicalise `amount` per CD-1 before the §8.5.2 price-band and price-equality comparisons. Two parties formatting the same economic value differently (e.g. `"1.50"` vs `"1.5"`) MUST therefore reproduce identical canonical bytes, hashes, and signatures. The agreement hash is sha256(canonical_form), hex-encoded. Each AgreementSignature.value is computed over the domain-separated payload per chapter 7§7.7:
 signed_bytes := "dacs-agreement:v1:" || agreement_hash
 Verifiers MUST recompute the canonical form, agreement hash, and domain-separated payload, and for each required party, resolve the primary claim’s key (per DACS-2 verification) and verify the signature. Required signers: negotiate-fixed-price — buyer + seller (seller signature may be an auto-accept instance signature per §8.4.1); negotiate-rfq — buyer + seller; negotiate-sealed-envelope — seller + winning bidder (non-winning bidders’ signatures are not required).
 
 #### 8.5.2 Listing conformance validation
 
-A verifier MUST validate the agreement against its referenced listing: terms.price MUST lie within the listing’s pricing band (if pricing is negotiable, within the declared negotiable.minPct / negotiable.maxPct band; if fixed, equal to the listed price); terms.rail MUST appear in listing.acceptedRails; terms.deliverable MUST conform to the listing’s offering.deliverable (deliverable hash, schema reference, etc.); terms.deadline MUST be ≤ generatedAt + listing.terms.deadlineSecAfterCommit; derivedFromPattern MUST match the listing’s pipeline-declared negotiation pattern. Agreements failing any check MUST be rejected by commit-agreement.
+A verifier MUST validate the agreement against its referenced listing: terms.price MUST lie within the listing’s pricing band (if pricing is negotiable, within the declared negotiable.minPct / negotiable.maxPct band; if fixed, equal to the listed price); terms.rail MUST appear in listing.acceptedRails; terms.deliverable MUST conform to the listing’s offering.deliverable — specifically: terms.deliverable.deliverableType MUST equal the listing offering.deliverable kind, terms.deliverable.hash MUST equal the canonical DeliverableRef.hash of the listing’s offering.deliverable (per §9.3), and terms.deliverable.schemaUrl MUST equal the listing offering.deliverable.schemaUrl (both absent, or both present and equal); terms.deadline MUST be ≤ generatedAt + listing.terms.deadlineSecAfterCommit; derivedFromPattern MUST match the listing’s pipeline-declared negotiation pattern. Agreements failing any check MUST be rejected by commit-agreement.
 
 ### 8.6 Commitment phase (commit-agreement)
 
@@ -2175,7 +2214,7 @@ type PricingSpec =
 
 type PriceTerm = {
 
-  amount: string                       // decimal as string, full precision
+  amount: string                       // canonical decimal string (rule CD-1, §8.5.1): minimal-digit, no leading/trailing zeros, no exponent; MUST be positive (see normative rule below)
 
   currency: string                     // ISO 4217 fiat OR asset id (e.g. "usd-stablecoin", "USDC", "SOL")
 
@@ -2197,7 +2236,7 @@ type DeliverableRef = {
 
   deliverableType: DeliverableSpec["kind"]
 
-  hash: string                         // sha256 of the deliverable spec
+  hash: string                         // sha256 of the RFC 8785 JCS canonical form of the DeliverableSpec (see below)
 
   schemaUrl?: string
 
@@ -2225,8 +2264,14 @@ type ChainTxRef =
 
   | { kind: "htlc-reveal"; chainId: number; contractAddress: string; revealTxHash: string }
 
+  | { kind: "htlc-refund"; chainId: number; contractAddress: string; refundTxHash: string }
+
   | { kind: "liquidity-tank"; bridgeId: string; sourceChainId: number; destChainId: number; lockTxHash: string; releaseTxHash?: string }
 ```
+
+**DeliverableRef canonical hash.** `DeliverableRef.hash` is `sha256(canonical_form)`, hex-encoded, where `canonical_form` is the RFC 8785 JCS serialisation of the `DeliverableSpec` — the same canonicalisation rule used for every other hashed artifact in DACS (listing §6.3.4, agreement §8.5.1). Because `DeliverableSpec` is a discriminated union with optional fields, the JCS rule (lexicographic key ordering, omitted-vs-present fields canonicalised consistently) is what makes the hash reproducible across implementations. To keep the §8.5.2 conformance check byte-for-byte deterministic, both parties MUST compute this hash over the listing's `offering.deliverable` value as anchored, not over a separately re-derived copy.
+
+**PriceTerm.amount positivity (normative).** `PriceTerm.amount` MUST be a positive decimal: it MUST parse to a finite value strictly greater than zero, and MUST NOT be NaN, infinite, or negative. Because `PriceTerm` is the canonical economic primitive consumed by automated winner-selection over adversarial bids (§8.4.3), band validation (§8.5.2), and on-chain amount construction (§9.5.2), conformant implementations MUST reject any bid, listing price, or agreed price whose `amount` is non-positive — before applying `selectionRule` and before commit-agreement. A revealed bid that violates this constraint MUST be excluded from the candidate set rather than selected as a `lowest-price` winner.
 
 ### 9.4 Payment rail registry
 
@@ -2253,7 +2298,15 @@ type RailDefinition = {
 
   availability: RailAvailability       // operational status (see §9.4.5)
 
-  governance: { proposedBy: ClaimReference; acceptedAt: number; supersedes?: number }
+  governance: {
+    proposedBy: ClaimReference;
+    acceptedAt: number;
+    supersedes?: number;
+    anchoring: "in-code" | "single-signer" | "multisig";   // progressive-anchoring phase; see §9.4.4 (line 2340) and §7.4.4
+    emergency?: { isEmergency: true; failureObservation: string };   // present iff this is an emergency revision
+    deprecated?: boolean;
+    deprecationReason?: string                              // required when deprecated is true
+  }
 
   signature: RailSignature             // steward's signature (see §9.4.3)
 
@@ -2416,9 +2469,10 @@ SPL token transfer on Solana.
 
 Atomic cross-chain settlement using HTLC contracts on source and destination chains.
 **Procedure.** Resolves rail and verifies asset.kind == "stablecoin-cross-chain" and network.kind == "cross-chain" with mechanism: "htlc"; selects route from asset.routes matching (sourceChainId, destChainId); derives the preimage per rule HTLC-5 below: preimage = HKDF(IKM = buyerSalt, salt = jobId, info = agreementHash) using RFC 5869 with sha256; computes per-chain hashlocks hashlock_source = H_source(preimage), hashlock_dest = H_dest(preimage) where H_source and H_dest are the native hash functions of the source and destination chains respectively (keccak256 on EVM chains, sha256 on Solana and Bitcoin family chains, blake2b on Cosmos family chains); locks payment on source chain by calling htlcContracts.source.lock(payeeAddr, amount, hashlock_source, timelock_source) and on the destination chain with timelock_dest per rule HTLC-7 below (timelock_source > timelock_dest); waits for source-side finality; reveals on destination chain by the payee calling htlcContracts.dest.claim(preimage); the preimage being revealed on dest allows source-side claim against hashlock_source; payer (or seller, depending on flow) claims on source using the revealed preimage; both txRefs (htlc-lock on source, htlc-reveal on dest) are collected; constructs SettlementEvidence with both txRefs; anchors via SR-2; returns success.
-**buyerSalt entropy and lifecycle (normative).** (HTLC-1) buyerSalt MUST be generated from a cryptographically-secure random source with at least 128 bits of entropy. (HTLC-2) buyerSalt MUST NOT be revealed before the source-side lock transaction has reached finality (the preimage is what releases funds; a leaked salt before lock-finality allows an adversary to compute the preimage and claim a pre-funded source position if the contract is mis-configured to accept claims pre-finality). (HTLC-3) buyerSalt MUST NOT be reused across sessions; each jobId uses a freshly-generated salt. (HTLC-4) buyerSalt MUST be retained by the payer until the destination-side claim transaction has reached finality (otherwise refund via timelock is still safe, but in-flight tracking and dispute become harder). (HTLC-5) **Preimage derivation** MUST use HKDF per RFC 5869 with sha256 as the KDF hash function; the IKM is buyerSalt, the salt is jobId, the info is agreementHash. Implementations MUST NOT use weaker preimage derivations. (HTLC-6) **Hashlock computation** is the chain-native hash function applied to the preimage. The source and destination chains MAY use different hash functions (e.g., keccak256 on EVM, sha256 on Solana). Implementations MUST NOT require both chains to share a hash function. The preimage is the only cross-chain-shared value; each side’s hashlock binds against its own native hash of that preimage. The preimage revealed on the destination chain is bit-identical to the preimage that produces hashlock_source under the source chain’s hash function. (HTLC-7) **Timelock asymmetry.** The source-chain timelock MUST be strictly greater than the destination-chain timelock, by a margin of at least the destination chain’s finality bound plus a safety window (RECOMMENDED: the larger of the two chains’ finality bounds). This prevents the free-option race in which the payee claims on the destination chain just before its timelock expires while the payer can no longer claim on the source chain: with timelock_source > timelock_dest + finality, once the payee’s destination claim reveals the preimage the payer retains a guaranteed window to claim on the source chain. Implementations MUST reject a route whose configured timelocks do not satisfy this inequality.
+**buyerSalt entropy and lifecycle (normative).** (HTLC-1) buyerSalt MUST be generated from a cryptographically-secure random source with at least 128 bits of entropy. (HTLC-2) buyerSalt MUST NOT be revealed before the source-side lock transaction has reached finality (the preimage is what releases funds; a leaked salt before lock-finality allows an adversary to compute the preimage and claim a pre-funded source position if the contract is mis-configured to accept claims pre-finality). (HTLC-3) buyerSalt MUST NOT be reused across sessions; each jobId uses a freshly-generated salt. (HTLC-4) buyerSalt MUST be retained by the payer until the destination-side claim transaction has reached finality (otherwise refund via timelock is still safe, but in-flight tracking and dispute become harder). (HTLC-5) **Preimage derivation** MUST use HKDF per RFC 5869 with sha256 as the KDF hash function; the IKM is buyerSalt, the salt is jobId, the info is agreementHash. Implementations MUST NOT use weaker preimage derivations. (HTLC-6) **Hashlock computation** is the chain-native hash function applied to the preimage. The source and destination chains MAY use different hash functions (e.g., keccak256 on EVM, sha256 on Solana). Implementations MUST NOT require both chains to share a hash function. The preimage is the only cross-chain-shared value; each side’s hashlock binds against its own native hash of that preimage. The preimage revealed on the destination chain is bit-identical to the preimage that produces hashlock_source under the source chain’s hash function. (HTLC-7) **Timelock asymmetry.** The source-chain timelock MUST be strictly greater than the destination-chain timelock, by a margin of at least the destination chain’s finality bound plus a safety window (RECOMMENDED: the larger of the two chains’ finality bounds). This prevents the free-option race in which the payee claims on the destination chain just before its timelock expires while the payer can no longer claim on the source chain: with timelock_source > timelock_dest + finality, once the payee’s destination claim reveals the preimage the payer retains a guaranteed window to claim on the source chain. The asymmetry that HTLC-7 guarantees is a property of the two locks’ **absolute expiry instants**, not of their configured durations alone: the safety property the implementation MUST verify is `expiry_source > expiry_dest + finality`, where each expiry is the wall-clock (or block-height) instant at which that chain’s timelock elapses. Implementations MUST reject a route whose configured timelocks cannot satisfy this inequality on absolute expiry instants under HTLC-8. (HTLC-8) **Timelock epoch (reference clock).** `timelockSourceSec` and `timelockDestSec` are durations; each is measured from the instant its lock transaction is mined on its chain. Because the source and destination locks are mined at different times (the procedure serialises them), the configured-duration inequality of HTLC-7 does not by itself guarantee the absolute-expiry inequality. To anchor both timelocks to a common reference, the destination-chain timelock MUST NOT begin counting before source-lock finality has been reached — equivalently, the destination lock MUST NOT be mined before source-lock finality. With this epoch anchoring, `timelockSourceSec > timelockDestSec + finality` (HTLC-7) implies `expiry_source > expiry_dest + finality` on absolute instants. Implementations MUST reject any route or schedule that mines (or could mine) the destination lock before source-lock finality, since such a route cannot establish the HTLC-7 guarantee.
 **Reference-implementation status.** The DACS reference implementation (agent-commerce-demo, ~929 LOC) currently uses HTLC for fx-rfq cross-chain settlement: a real Solana Anchor program + Base Sepolia EVM HTLC contract, with lock / reveal / refund implemented end-to-end. This predates Native Bridges Phase 1 deployment; the reference will migrate to pay-cross-chain-liquidity-tank as Phase 1 stabilises.
-**Failure modes.** Source-side lock fails → permanent (no funds at risk yet); destination-side timeout (payee never claims) → settlement-atomicity, refund path runs (payer reclaims after timelock expires); preimage revealed but source-side claim fails → settlement-atomicity (requires off-chain dispute or manual intervention; SR-5 timelock makes funds eventually recoverable).
+**Failure modes.** Source-side lock fails → permanent (no funds at risk yet); destination-side timeout (payee never claims) → settlement-atomicity, refund path runs (payer reclaims after timelock expires); preimage revealed but source-side claim fails → settlement-atomicity, **non-refundable asymmetric state** (the payee has already claimed on the destination chain, so the source MUST NOT be refunded — see HTLC-9 below).
+**Asymmetric-settlement evidence (normative).** (HTLC-9) The "preimage revealed but source-side claim fails" branch is materially different from the destination-side-timeout branch: in the timeout branch no value reached the payee and the payer is made whole by the source timelock, whereas here the payee has already received value on the destination chain (htlc-reveal succeeded; the preimage is public) and the source-side claim has not yet landed. Refunding the source in this branch would double-pay the payee once the eventual source claim is mined, so this state MUST NOT be modelled as a `refund` or `partial-refund` SettlementAmendment. To make the state representable and machine-distinguishable from the benign timeout: (a) the SettlementEvidence MUST set `outcome: "failure"` with a structured `reason` marker identifying the asymmetric state (RECOMMENDED literal `dest-revealed-source-unclaimed`); and (b) `paymentTxRefs` MUST include the `htlc-reveal` txRef so a consumer can prove the payee was paid on the destination chain. The open state is closed by a SettlementAmendment with `amendmentType: "correction"` carrying the eventual source-side claim txRef once dispute or manual intervention completes; until that correction is anchored the session is settled-asymmetric, not refunded. DACS-5 reputation derivation SHOULD weight an unresolved `dest-revealed-source-unclaimed` state strictly worse than a clean destination-side-timeout refund, since the payer has lost funds the payee already received.
 
 #### 9.5.5 pay-cross-chain-liquidity-tank
 
@@ -2587,7 +2641,7 @@ SettlementAmendment is anchored via SR-2 at dacs4:amendment:{jobId}:{evidenceHas
 ### 9.8 Cross-chain atomic settlement (SR-5)
 
 Atomic settlement across chains requires SR-5: either substrate-native cross-chain transactions, HTLC contracts on participating chains, or pre-funded liquidity primitives (Liquidity Tanks on Demos).
-**Atomicity guarantee.** SR-5 implementations MUST ensure: payment on chain A and value-receipt on chain B succeed together; or both refund / never-take-effect within a bounded time. "Bounded time" is realisation-specific: HTLC — the timelock parameter; Liquidity Tank — the substrate’s consensus epoch (Demos: typically seconds; emergency-recovery backstop: 15 days); substrate-native cross-chain — atomically within the substrate transaction.
+**Atomicity guarantee.** SR-5 implementations MUST ensure: payment on chain A and value-receipt on chain B succeed together; or both refund / never-take-effect within a bounded time. "Bounded time" is realisation-specific: HTLC — the timelock parameter; Liquidity Tank — the substrate’s consensus epoch (Demos: typically seconds; emergency-recovery backstop: 15 days); substrate-native cross-chain — atomically within the substrate transaction. One branch falls outside the "both refund" arm by construction: the HTLC reveal-succeeded / source-claim-failed state (§9.5.4, HTLC-9), where the payee has already received value on the destination chain and refunding the source would double-pay. SR-5 implementations MUST surface this state as the asymmetric-settlement evidence defined in HTLC-9 (not as a refund) and resolve it via a `correction` amendment; this is the bounded exception to the refund arm, not a hole in atomicity.
 **Cross-chain messaging vs settlement.** Cross-chain messaging protocols (Wormhole, LayerZero, Hyperlane, CCIP, Axelar, IBC) carry arbitrary message payloads between chains; they are message-passing primitives. SR-5 is settlement-atomicity: the property that a payment on chain A and a value-receipt on chain B happen together or not at all. A messaging protocol CAN be composed with SR-5 (e.g., a Liquidity Tank implementation may use a messaging protocol internally), but it is NOT itself SR-5. DACS-4 does not register messaging protocols as first-class rails for this reason — the rail surface is settlement, and a "message delivered" outcome does not imply a "value settled" outcome. Substrates whose SR-5 implementation depends on a specific messaging protocol MUST disclose this in the rail definition; the trust model then inherits both the messaging protocol’s and the SR-5 mechanism’s assumptions.
 **Choosing a rail.** Cost: HTLC pays gas on two chains; Liquidity Tank typically pays gas only on dest (source-side lock is operator-paid in tank schemes that subsidise gas, including Demos’s current model). Latency: HTLC — source finality + dest finality + claim round-trip (minutes typically); Liquidity Tank — substrate epoch (seconds on Demos). Trust: HTLC — cryptographic / chain consensus only; Liquidity Tank — substrate operator. Listings selecting cross-chain rails SHOULD declare the trust expectations in terms.additionalTerms.
 
@@ -2653,7 +2707,7 @@ A single-table summary of phase types, their parameters (from listing PhaseStep)
 | --- | --- | --- |
 | pay-evm-erc20 | {rail: railId}; rail.parameters.finalityBlocks optional | evm |
 | pay-solana-spl | {rail: railId}; rail.parameters.commitmentLevel optional | solana |
-| pay-cross-chain-htlc | {rail: railId}; rail.parameters.timelockSourceSec and timelockDestSec required, with timelockSourceSec > timelockDestSec + finality (HTLC-7) | htlc-lock + htlc-reveal |
+| pay-cross-chain-htlc | {rail: railId}; rail.parameters.timelockSourceSec and timelockDestSec required, with timelockSourceSec > timelockDestSec + finality (HTLC-7), evaluated against absolute expiry instants under the source-lock-finality epoch (HTLC-8) | htlc-lock + htlc-reveal |
 | pay-cross-chain-liquidity-tank | {rail: railId} | liquidity-tank |
 | pay-ap2 | {rail: railId}; rail.parameters.providerEndpoint required | ap2 |
 | pay-x402 | {rail: railId} | x402 |
@@ -2857,7 +2911,7 @@ type BundleSignature = {
 
 Canonical form is RFC 8785 JCS of the bundle with signatures field omitted. Bundle hash is sha256(canonical_form), hex-encoded. Each BundleSignature.value MUST be computed over a domain-separated payload:
 signed_bytes = "dacs-bundle:v1:" || bundleHash.value
-The "dacs-bundle:v1:" string prefix prevents cross-protocol signature confusion: an attacker capturing a bundle signature MUST NOT be able to replay it as a listing signature, agreement signature, or any other DACS signature even if the hash bytes collide. Verifiers MUST recompute the canonical form, the bundle hash, the prefixed signed_bytes, and verify each signature against the appropriate party’s primary-claim key. Required signers: buyer + seller. If the orchestrator is a distinct party (not buyer or seller), the orchestrator signature is also REQUIRED. Bundles missing any required signature MUST be rejected by consumers.
+The "dacs-bundle:v1:" string prefix prevents cross-protocol signature confusion: an attacker capturing a bundle signature MUST NOT be able to replay it as a listing signature, agreement signature, or any other DACS signature even if the hash bytes collide. Verifiers MUST recompute the canonical form, the bundle hash, the prefixed signed_bytes, and verify each signature against the appropriate party’s primary-claim key. Required signers: buyer + seller. If the orchestrator is a distinct party (not buyer or seller), the orchestrator signature is also REQUIRED. Bundles whose outcome is `completed`, `failed-perm`, `failed-counterparty`, or `failed-substrate` and that are missing any required signature MUST be rejected by consumers. A bundle whose outcome is `aborted-by-self` or `aborted-by-other` MAY carry a single signature; consumers MUST NOT reject it on that basis but MUST classify it per the bundle-suppression rule in §10.11.
 
 #### 10.4.2 Anchoring
 
@@ -2983,6 +3037,16 @@ derive(party, bundles, windowStart, windowEnd):
 
       r := fetch_and_verify_rating(ratingRef)   // RatingRecord
 
+      // r.signature MUST verify against r.rater's primary-claim key
+
+      // (same key class as a BundleSignature). Bind the rater to THIS session:
+
+      if r.jobId != b.jobId: continue                              // not this session
+
+      if r.rater not in {p.primaryClaim for p in b.parties}: continue   // rater was not a party here
+
+      if r.rater == party: continue                                // no self-rating toward one's own score
+
       if r.target == party AND r.targetRole == "seller":
 
         ratings_targeting_party_as_seller.append(r.value)
@@ -2999,14 +3063,22 @@ derive(party, bundles, windowStart, windowEnd):
 
                          when ratings_targeting_party_as_buyer else null
 
-  volume := groupSumByCurrency(b.agreementRef.terms.price
+  volume_terms := []
 
-                               for b in scoped where agreementRef present)
+  for b in scoped where agreementRef present:
+
+    agreement := fetch_and_verify_agreement(b.agreementRef)   // DACS-3 AgreementDocument
+
+    volume_terms.append(agreement.terms.price)
+
+  volume := groupSumByCurrency(volume_terms)
 
   return ReputationDerivation with computed metrics
 ```
 
-"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, verifying its signature, and aggregating the values whose target matches the scored party; the metric is null when no qualifying ratings exist.
+"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, and verifying its signature against the rater’s primary-claim key (the same key class as a BundleSignature, per §10.4.1). A RatingRecord MUST be discarded — not aggregated — unless it binds to the session being scored: the deriver MUST require r.jobId == b.jobId, r.rater MUST be one of the bundle’s parties[].primaryClaim, and r.rater MUST NOT equal the scored party (no self-rating). Only the remaining records’ values, whose target matches the scored party, are aggregated; the metric is null when no qualifying ratings exist. The observedTransactionalVolume metric is computed analogously: for each scoped bundle whose agreementRef is present, the deriver MUST resolve the AttestationRef to its AgreementDocument via fetch_and_verify_agreement(agreementRef) — fetching the anchor at agreementRef.anchor.locator, comparing the hashed bytes to agreementRef.contentHash (mismatch MUST cause that bundle to be excluded), and parsing the result as a DACS-3 AgreementDocument per the §7.5.2 attestation resolution algorithm — and then sum agreement.terms.price grouped by currency. agreementRef is an AttestationRef, not an inline AgreementDocument, so the volume step MUST dereference it before reading terms.price.
+
+The windowing predicate above bounds against `b.finalisedAt`, which is a producer-set wall-clock value (§10.4) with no anchoring-time cross-check. Because the bundle is anchored via SR-2, a consensus-attested write time is also available. Consumers performing high-stakes derivation SHOULD bound the window against the bundle’s SR-2 anchor timestamp (the substrate’s consensus-attested write time) rather than, or in addition to, the self-asserted `finalisedAt`, and SHOULD flag a `finalisedAt` that diverges materially from the anchor time. This parallels the chain-timestamp discipline already required for sealed-envelope commits in §8.4.3 (SE-2), where the substrate anchor — not the producer’s clock — decides the timestamp; `finalisedAt` is otherwise advisory and the anchor time is authoritative for windowing.
 
 #### 10.5.2 Per-primary-claim keying
 
@@ -3096,14 +3168,14 @@ EVM-side consumers MAY read ERC-8004 entries as a discovery surface for DACS-5 b
 ### 10.11 Security considerations
 
 **Bundle forgery.** *Threat:* an attacker produces a fake bundle claiming a session that did not happen, hoping to influence reputation. *Mitigation:* the bundle must be co-signed by both parties; signatures use domain-separated payloads; consumers verify both signatures against the parties’ verified primary claims. A unilateral bundle cannot influence the counterparty’s reputation.
-**Bundle suppression.** *Threat:* a party who performed badly in a session refuses to sign the bundle, hoping to prevent its publication. *Mitigation:* the non-signing party’s outcome (aborted-by-self) is recorded in the counterparty’s bundle attempt; consumers seeing a bundle with only one signature MUST classify the session as aborted-by-self for the non-signer and aborted-by-other for the signer. The non-signer’s reputation takes the appropriate hit even if they refuse to sign. (Implementation note: a one-sided bundle MUST follow exactly the same canonical form and signing rules; the absence of the counterparty’s signature is what flags the outcome.)
+**Bundle suppression.** *Threat:* a party who performed badly in a session refuses to sign the bundle, hoping to prevent its publication. *Mitigation:* the non-signing party’s outcome (aborted-by-self) is recorded in the counterparty’s bundle attempt; consumers seeing a bundle with only one signature MUST classify the session as aborted-by-self for the non-signer and aborted-by-other for the signer. The non-signer’s reputation takes the appropriate hit even if they refuse to sign. (Implementation note: a one-sided bundle MUST follow exactly the same canonical form and signing rules; the absence of the counterparty’s signature is what flags the outcome. This is the carve-out referenced by §10.4.1 — the reject-missing-required-signature rule applies only to the non-abort outcomes, so a one-signature `aborted-by-self`/`aborted-by-other` bundle reaches this classification rather than being rejected.)
 **Sybil reputation farming.** *Threat:* an attacker creates many cheap primary claims (key:…) and farms self-deal reputation between them. *Mitigation:* DACS-5 metrics are partitioned by primary claim and do not inherit; Sybil farming over key:… claims accumulates reputation only against those claims, not against higher-tier presentations. The DACS-2 supplementary signals (counterparty being a known Sybil cluster) feed back into Vet for any party who cares.
 **Replay across sessions.** *Threat:* an attacker captures a signed bundle and replays it as a different session’s bundle. *Mitigation:* the bundle includes jobId; the signature payload includes the bundle hash which includes jobId. Replay against a different jobId fails verification.
 **Cross-protocol signature confusion.** *Threat:* a bundle signature is replayed as some other DACS signature (listing, agreement) where the underlying hash bytes happen to align. *Mitigation:* the universal signature scheme in chapter 7§7.7 defines per-artifact domain separators across the entire DACS v0.1 stack; the bundle domain separator is "dacs-bundle:v1:" and other artifact kinds use their own separators per the table in §7.7. A signature produced under any artifact kind cannot validate as a signature under any other kind, even when the hash bytes coincide.
 **Reputation poisoning via collusion.** *Threat:* two colluding parties run many fake sessions to inflate each other’s reputation. *Mitigation:* this is fundamentally hard to prevent at the protocol level. DACS-5 mitigates by per-primary-claim keying (collusion inflates only one tier of reputation), by transactional-volume reporting (consumers can see if a party’s reputation comes from many tiny sessions vs few large ones), and by composability with external signal sources. Consumers handling stakes worth the cost of collusion SHOULD weigh DACS-5 metrics against external signals.
 **Orchestrator misclassification of errorClass.** *Threat:* the orchestrator classifies a counterparty failure as a substrate failure (or vice versa) to bias reputation. *Mitigation:* the bundle phaseSummary carries the errorClass; both parties sign the bundle; a party that disagrees with the classification refuses to sign, producing aborted-by-other. The honest party’s independent bundle (with their own classification) is the source of truth for their reputation. Persistent classification disputes are a DACS-X concern.
 **Bundle anchor unavailability.** *Threat:* the SR-2 anchor becomes unreadable after the session ends (e.g. storage program purged, IPFS unpinned). *Mitigation:* on-substrate anchoring (Demos Storage Programs) provides indefinite availability under substrate operation. Off-substrate anchoring (IPFS, HTTPS) is best-effort. Listings concerned with long-term auditability SHOULD use on-substrate anchoring for bundles regardless of which surface the rest of the session uses.
-**Time-bound reputation windows.** *Threat:* an old, no-longer-representative reputation is presented as current. *Mitigation:* derivations are window-bounded; consumers querying reputation MUST specify a window and SHOULD weight recent windows more heavily. The algorithm does not specify weighting (consumers choose); it does require explicit window bounds in every derivation.
+**Time-bound reputation windows.** *Threat:* an old, no-longer-representative reputation is presented as current; or a producer backdates or forward-dates the self-asserted `finalisedAt` to move a session out of a scrutinised window or to cluster volume into a favourable one. *Mitigation:* derivations are window-bounded; consumers querying reputation MUST specify a window and SHOULD weight recent windows more heavily. The algorithm does not specify weighting (consumers choose); it does require explicit window bounds in every derivation. Against producer-chosen `finalisedAt`, consumers performing high-stakes derivation SHOULD window against the SR-2 anchor timestamp per §10.5.1, so that the substrate — not the bundle producer — decides window membership.
 **ERC-8004 write spamming.** *Threat:* an attacker writes many fake ERC-8004 entries pointing at fabricated bundles. *Mitigation:* ERC-8004 entries are pointers; consumers MUST fetch and validate the bundle. Fake bundles fail at validation. The cost of writing many ERC-8004 entries (gas) is a natural rate limit; DACS-5 publishers SHOULD additionally enforce per-session rate limits.
 
 ## Chapter 11 — Stewardship, versioning, follow-on
@@ -3364,7 +3436,8 @@ This chapter sketches the test categories an implementer should cover to claim c
 - **Rail authoring (RD-1..RD-5).** Steward-key signature with domain separator; anchoring; version monotonicity; railType/asset/network consistency.
 - **Payment common contract (PC-1..PC-4).** For each of the six pay-* phases: input-shape validation; anchored SettlementEvidence; PhaseHandlerResult with correct attestationRef; outcome classification across all errorClass values.
 - **pay-evm-erc20 / pay-solana-spl.** Decimal-conversion correctness (no float arithmetic); chain-finality wait; SettlementEvidence with correct txRef kind.
-- **pay-cross-chain-htlc (HTLC-1..HTLC-7).** buyerSalt entropy enforcement; HKDF preimage-derivation correctness (IKM=buyerSalt, salt=jobId, info=agreementHash); salt-non-reuse across sessions; pre-finality-reveal rejection; timelock-refund path; per-chain native hashlock functions (keccak256 on EVM, sha256 on Solana, blake2b on Cosmos) producing distinct hashlocks from the same preimage; timelock asymmetry (timelock_source > timelock_dest + finality) enforced, with mis-configured routes rejected.
+- **Canonical decimal (CD-1).** PriceTerm.amount canonicalisation: economically-equal forms (`"1.50"`, `"01.5"`, `"1.500"`) all normalise to `"1.5"` and produce identical agreement/SettlementEvidence JCS hashes and signatures; non-canonical input on read either canonicalises or is rejected per implementation policy; §8.5.2 price-band and price-equality checks compare canonicalised decimals, not raw strings.
+- **pay-cross-chain-htlc (HTLC-1..HTLC-9).** buyerSalt entropy enforcement; HKDF preimage-derivation correctness (IKM=buyerSalt, salt=jobId, info=agreementHash); salt-non-reuse across sessions; pre-finality-reveal rejection; timelock-refund path; per-chain native hashlock functions (keccak256 on EVM, sha256 on Solana, blake2b on Cosmos) producing distinct hashlocks from the same preimage; timelock asymmetry (timelock_source > timelock_dest + finality) enforced on absolute expiry instants under the source-lock-finality epoch (HTLC-7/HTLC-8), with mis-configured routes rejected; asymmetric-settlement (dest-revealed / source-claim-failed) state surfaced as evidence, not a refund (HTLC-9).
 - **pay-cross-chain-liquidity-tank.** BridgeOperation lifecycle ("empty" → "pending" → "completed" | "failed"); bridge_id recording; route-in-supported-scope validation.
 - **pay-ap2 / pay-x402.** Mandate-revocation handling; receipt-signature verification.
 - **Delivery phases.** deliver-storage-program with normal and extended-pointer payloads; deliver-entitlement with signature + anchor + scope; deliver-attested-payload composing DACS-2 attestation.
