@@ -841,7 +841,7 @@ GET /api/dacs/sellers/{primaryClaimRef}
 
     "listings": ListingSummary[],
 
-    "identity": IdentityBundle (catalog-cached, last-seen),
+    "identity": { primaryClaim: ClaimReference; displayName: string } (discovery-minimal projection, catalog-cached, last-seen),
 
     "reputation": ReputationSummary (per DACS-5)
 
@@ -876,7 +876,7 @@ type ListingSummary = {
 ```
 
 Catalogs MAY return cached ListingSummary records. Clients MUST dereference the anchor to obtain the canonical Listing before engaging. The catalog provides discovery; the chain provides binding. Catalogs SHOULD verify each indexed listing’s anchor at least every 24 hours; the catalogObservedAt timestamp surfaces the catalog’s confidence.
-Read endpoints MUST NOT require authentication. Write/registration semantics are out of scope for v0.1; the canonical source of truth is always the substrate-anchored listing, not the catalog entry. For every ListingSummary returned, a DACS-aware client MUST resolve the anchor to the on-chain content and validate the contentHash. The catalog’s role is to surface candidates; binding decisions MUST follow the substrate.
+Read endpoints MUST NOT require authentication. Because the sellers endpoint is an open, cacheable, unauthenticated read surface, its identity field MUST be limited to the discovery-minimal projection { primaryClaim, displayName } (consistent with ListingSummary.seller above); catalogs MUST NOT serve the full IdentityBundle (the complete cross-scheme claims[] set per §6.3.2) on this endpoint. Disclosure of the full bundle is gated behind a session context, where the session-nonce binding of §6.3.2 already applies, and MUST NOT occur over the open catalog. Write/registration semantics are out of scope for v0.1; the canonical source of truth is always the substrate-anchored listing, not the catalog entry. For every ListingSummary returned, a DACS-aware client MUST resolve the anchor to the on-chain content and validate the contentHash. The catalog’s role is to surface candidates; binding decisions MUST follow the substrate.
 
 #### 6.3.7 Conformance summary
 
