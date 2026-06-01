@@ -502,6 +502,18 @@ match(bundle, requirement):
 
        if bundle.presentedBy.scheme != requirement.primaryClaimSelector: return REJECT
 
+  3b. If requirement.primaryClaimSelector is set:
+
+       // The exact claim presentedBy resolves to MUST itself be verified — not merely some claim of the selector scheme.
+
+       // Otherwise a presenter could launder reputation by pairing an unverified (or third-party) presentedBy identifier with a *different*, already-verified claim of the same scheme.
+
+       presented := the claim c in bundle.claims whose c.ref matches bundle.presentedBy by canonical scheme AND identifier (the §6.3.2 presentedBy resolution rule)
+
+       if presented is null: return REJECT   // presentedBy does not resolve to a claim in the bundle
+
+       if presented.verifiedBy missing OR resolution fails OR presented.verifiedBy.decision != "pass": return REJECT
+
   4. If requirement.preferredPresentation is set AND != "any":
 
        if bundle.presentation.kind != requirement.preferredPresentation: return WARN, accept
@@ -3429,6 +3441,7 @@ This chapter sketches the test categories an implementer should cover to claim c
 - **Aggregation.** Each branch of classify_required: missing, all-failing, all-indeterminate, all-errored, mixed-with-pass. oneOf groups: failure vs error vs indeterminate distinction. Precedence: failures > errors > indeterminates when classifying overall.
 - **Recipe and rail availability (§7.4.5, §9.4.5).** Every value in the closed enum produces the conformant orchestrator/verifier behaviour: RAV-1 through RAV-4 for recipes (no silent treatment as live; consumer surfacing; disabled/failed → error in aggregation; alternative availability not inheriting from default); RAV-R1 through RAV-R4 for rails (preflight inspection; no selection of disabled/failed; mid-session live→failed transition maps to substrate errorClass).
 - **Phase contract (VPC-1..VPC-4).** Order (Vet after Identify, before Negotiate); two-sided execution; anchor-before-return; fail-or-indeterminate handling.
+- **Matching algorithm (MA-1..MA-3, §6.3.3).** required/oneOf satisfaction; primaryClaimSelector scheme match (MA-2: presentedBy scheme != selector → REJECT); presentedBy verification (MA-3: primaryClaimSelector set + presentedBy claim unverified, i.e. missing/failing verifiedBy → REJECT, even when the structural scheme matches).
 
 ### 14.3 DACS-3 — Negotiate
 
