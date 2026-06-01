@@ -372,7 +372,7 @@ The Storage Program at stor-{sha256(subject_cci + ":" + credential-type + ":" + 
 | Scheme | Identifier shape | Use |
 | --- | --- | --- |
 | did:… | per W3C DID method | external decentralised identifier; resolution per method |
-| erc8004:<chainId>:<contract>:<tokenId> | lowercase contract; decimal tokenId | external EVM agent identity NFT; verified via DACS-2 evm-rpc |
+| erc8004:<chainId>:<contract>:<tokenId> | <chainId> is an eip155 chain id as a bare decimal integer (no leading zeros), canonically the CAIP-2 chain id eip155:<chainId>; lowercase 0x-prefixed contract; tokenId is the uint256 token id in decimal, no leading zeros | external EVM agent identity NFT; verified via DACS-2 evm-rpc |
 | domain:<dns> | lowercase, IDNA-encoded | DNS / TLS control proof via DACS-2 domain-tls-control |
 | key:<hex-pubkey> | lowercase, no 0x | self-signed; lowest tier; signing-key only |
 
