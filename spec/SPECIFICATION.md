@@ -275,7 +275,7 @@ The v0.1 registry of domain separators is closed:
 | DACS-5 rating record | "dacs-rating:v1:" | §10.6 |
 
 **Conformance.** (SIG-1) Every signature in DACS v0.1 MUST be computed over the appropriate domain-separated payload from the table above. (SIG-2) Verifiers MUST reconstruct the domain separator and artifact hash independently and MUST NOT trust either supplied as-is by a counterparty. (SIG-3) Signatures whose payload computation cannot be reproduced exactly MUST be rejected. (SIG-4) An artifact kind not in the v0.1 table MUST use a domain separator of the form "dacs-x-" || kind || ":v" || version || ":" until accepted into a future version of the registry.
-**Algorithm.** The signing algorithm itself (Ed25519, ECDSA-secp256k1, or sr1-aggregate) is independent of the domain-separation rule. The domain separator is prepended to the signed bytes regardless of algorithm. Implementations MUST NOT compute a signature over the artifact hash without the separator and MUST NOT compute a signature over the canonical form directly (always over the prepended-separator-then-hash payload).
+**Algorithm.** The signing algorithm itself (Ed25519, ECDSA-secp256k1, or sr1-aggregate) is independent of the domain-separation rule. The domain separator is prepended to the signed bytes regardless of algorithm. Implementations MUST NOT compute a signature over the artifact hash without the separator and MUST NOT compute a signature over the canonical form directly (always over the prepended-separator-then-hash payload). `artifact_hash` MUST be the lowercase hex string of the sha256 digest; the `domain_separator` (a UTF-8 string) and `artifact_hash` (an ASCII hex string) are concatenated as UTF-8 byte sequences with no separator byte.
 
 ## 8. Composed open standards
 
@@ -1684,7 +1684,7 @@ type ChannelMessage = {
 }
 ```
 
-The envelope’s canonical form is the RFC 8785 JCS serialisation with the signature field omitted. The envelope hash is sha256(canonical_form). The signature is computed over the domain-separated payload per chapter 7§7.7:
+The envelope’s canonical form is the RFC 8785 JCS serialisation with the signature field omitted. The envelope hash is sha256(canonical_form), hex-encoded. The signature is computed over the domain-separated payload per chapter 7§7.7:
 signed_bytes := "dacs-channelmsg:v1:" || envelope_hash
 Implementations MAY add transport-level fields (routing, framing) outside the signed envelope; signed envelope contents MUST NOT change between sender and receiver.
 
