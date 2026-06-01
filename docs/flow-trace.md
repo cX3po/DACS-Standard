@@ -1,8 +1,26 @@
-# DACS — Logical Flow Trace (SDK-aligned)
+# DACS — Logical Flow Trace (SDK-mapped pseudocode)
 
 **Spec version.** Aligned to **DACS v0.1**. Trace updates with each minor version of the spec; see CHANGELOG for material changes since earlier drafts.
 
-**Purpose.** Trace one end-to-end DACS happy path against the **real Demos SDK** (`@kynesyslabs/demosdk`), so the logical flow can be sanity-checked against the technical flow that production code actually executes. Where the protocol needs something the SDK doesn't yet expose, that's called out inline and consolidated in the gap list at the end.
+**Purpose.** Trace one end-to-end DACS happy path against the Demos SDK (`@kynesyslabs/demosdk`), so the logical flow can be sanity-checked against the technical flow that production code executes. Where the protocol needs something the SDK doesn't yet expose, that's called out inline and consolidated in the gap list at the end.
+
+> **Read this as protocol-level pseudocode, not copy-paste-runnable SDK code.** The
+> calls below name the *capability* the SDK provides; the exact import path and
+> method name track the SDK and have drifted across versions. The mapping below was
+> verified against **`@kynesyslabs/demosdk` 4.0.5** (the current published version at
+> the time of writing) — always cross-check method names against the published SDK
+> reference before implementing.
+>
+> | Capability (as written below) | SDK 4.0.5 surface |
+> |---|---|
+> | `demos.storage.read / write` | `demos.storagePrograms.read(...)`; writes via `demos.store(...)` / `demos.tx.store(...)` |
+> | `demos.cci.resolve(claimRef)` | `Identities` class from `@kynesyslabs/demosdk/abstraction` (`getIdentities(...)`); see also `demos.crypto.getIdentity` |
+> | `demos.wallet.signIn(...)` (SIWD) | `DemosWebAuth` from `@kynesyslabs/demosdk/websdk` (`.create / .login / .sign / .verify`) |
+> | `demos.work.run(work)` | `@kynesyslabs/demosdk/demoswork` — build with `DemosWork` / `WorkStep` / `prepareXMStep`, submit via the prepared payload |
+> | `demos.web2.createDahr()` → `dahr.startProxy(...)` | matches verbatim ✓ |
+> | `demos.sign / connect / connectWallet / getAddress / tx.*` | match verbatim ✓ |
+> | `l2ps.L2PS()` | matches (`@kynesyslabs/demosdk/l2ps`); anonymous-key today (see §9.2) |
+> | `demos.crypto.encryptForRecipients`, `demos.dacs.sign` | not yet in the SDK (see gap list §9.4, §9.8) |
 
 **Scenario.** A buyer agent commissions a content-moderation service from a seller agent. The seller posts a listing requiring buyer LEI + jurisdiction proof. Negotiation runs as an RFQ over an L2PS subnet (multi-turn, private). Settlement is cross-chain: buyer pays USDC on Base, seller receives USDC on Solana, routed via Demos's Liquidity Tank infrastructure (which the SDK accesses through `WorkStep`s of context `"xm"`). The seller delivers an entitlement record granting API access. Both parties co-sign the session bundle and anchor it as a Storage Program.
 
@@ -13,8 +31,6 @@
 ## 1. Sequence diagram
 
 > **The end-to-end sequence diagram** is rendered from the Mermaid source in [Appendix A](#appendix-a--mermaid-source) below — GitHub renders the `mermaid` block inline.
-
-*(Mermaid source for this diagram is in [Appendix A](#appendix-a--mermaid-source) at the end of this document.)*
 
 ---
 
@@ -631,13 +647,15 @@ Notes:
 
 ## 8. Substrate primitive call-out
 
-| Primitive | SDK surface used | Production status |
+SDK surface column verified against `@kynesyslabs/demosdk` **4.0.5**. Names track the SDK across versions — cross-check the published SDK reference before implementing.
+
+| Primitive | SDK surface (4.0.5) | Production status |
 |---|---|---|
-| **SR-1** Cross-substrate identity | `demos.cci.resolve(claimRef)`, `demos.wallet.signIn(...)` | ✅ Live (8 CCI contexts in production) |
-| **SR-2** Anchored storage | `demos.storage.read(addr)`, `demos.storage.write({addr, value})` | ✅ Live (Storage Programs, 128 KB cap) |
+| **SR-1** Cross-substrate identity | `Identities` (`@kynesyslabs/demosdk/abstraction`, `getIdentities(...)`); SIWD via `DemosWebAuth` (`@kynesyslabs/demosdk/websdk`) | ✅ Live (8 CCI contexts in production) |
+| **SR-2** Anchored storage | `demos.storagePrograms.read(addr)`; writes via `demos.store(...)` / `demos.tx.store(...)` | ✅ Live (Storage Programs, 128 KB cap) |
 | **SR-3** Consensus-backed proxy | `demos.web2.createDahr()` → `dahr.startProxy({url, method})` → `dahr.stopProxy()` | ✅ Live (hash-commitment mode); ⚠ validator-body-signed mode pending |
-| **SR-4** Private channel | `new l2ps.L2PS()` → `subnet.sendMessage({recipient, content})` | ⚠ Substrate live; CCI-keyed membership + envelope API + transcript export on backlog |
-| **SR-5** Atomic cross-chain settlement | `WorkStep({context: "xm", ...})` inside `DemosWork`, auto-routed through Liquidity Tank | ⚠ Phase 1 live (EVM-USDC unidirectional, 2 testnet tanks); Phase 2-4 (Solana, bidirectional, consensus execute, emergency recovery) on roadmap |
+| **SR-4** Private channel | `new l2ps.L2PS()` (`@kynesyslabs/demosdk/l2ps`) → `subnet.sendMessage({recipient, content})` | ⚠ Substrate live; CCI-keyed membership + envelope API + transcript export on backlog |
+| **SR-5** Atomic cross-chain settlement | `WorkStep` / `prepareXMStep` (context `"xm"`) inside `DemosWork` (`@kynesyslabs/demosdk/demoswork`), auto-routed through Liquidity Tank | ⚠ Phase 1 live (EVM-USDC unidirectional, 2 testnet tanks); Phase 2-4 (Solana, bidirectional, consensus execute, emergency recovery) on roadmap |
 
 ---
 
@@ -733,13 +751,13 @@ This is on the DACS-4 build backlog ("WorkStep wrapper for `pay-cross-chain-liqu
 
 ## 10. Summary — what this trace shows
 
-**Protocol composes with the SDK cleanly where the SDK is complete** (SR-1, SR-2, SR-3). The Identify and Vet stages map almost one-to-one to existing SDK calls (`demos.wallet.signIn`, `demos.cci.resolve`, `demos.storage.read/write`, `demos.web2.createDahr` + `startProxy`).
+**Protocol composes with the SDK where the SDK is complete** (SR-1, SR-2, SR-3). The Identify and Vet stages map onto existing SDK capabilities — identity resolution (`Identities` / `getIdentities`), SIWD auth (`DemosWebAuth`), storage programs (`demos.storagePrograms.read` / `demos.store`), and DAHR (`demos.web2.createDahr` + `startProxy`, which matches the pseudocode verbatim). The exact method names differ from the illustrative calls in the stages above; see the SDK-compatibility note at the top of this document for the verified mapping against SDK 4.0.5.
 
 **The two stages with real SDK gaps are Negotiate (SR-4) and Settle (SR-5).** Both have substrate primitives that exist today (L2PS subnet, Liquidity Tank Phase 1) but lack the SDK-surface ergonomics the protocol assumes. None of the gaps require new protocol design — they're all build-backlog items already tracked (Tier 1 for SR-4 L2PS-CCI work; Phase 2-4 for SR-5 tank expansion).
 
 **The protocol does not ask the substrate for anything it isn't already on track to provide.** Every gap above is either a documented backlog item or a convenience helper. There is no "the protocol assumes a primitive that doesn't exist and isn't planned" gap.
 
-**Open questions surfaced by writing this SDK-aligned trace** (different from the protocol-only trace's open questions):
+**Open questions surfaced by writing this SDK-mapped trace** (different from the protocol-only trace's open questions):
 
 1. The `xm`-step routing decision (tank vs HTLC) happens at the node, not in caller code. Should the protocol's `pay-cross-chain-liquidity-tank` vs `pay-cross-chain-htlc` distinction be enforceable from the caller's side, or is "the node picks the best route" the right model? *Suggests: keep the rail-registry distinction, let the node choose the mechanism, but require the resulting `txRef.kind` to match the rail chosen — fail the phase if rail said "tank" and node fell back to HTLC.*
 
