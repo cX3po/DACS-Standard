@@ -1199,13 +1199,13 @@ type VerificationMethod =
 
 type ParserSpec =
 
-  | { format: "json"; successJsonPath: string; dataMap?: Record<string, string> }
+  | { format: "json"; successJsonPath: string; dataMap?: Record<string, string>; expectStatus?: number[] }
 
-  | { format: "html"; successSelector: string; dataMap?: Record<string, string> }
+  | { format: "html"; successSelector: string; dataMap?: Record<string, string>; expectStatus?: number[] }
 
-  | { format: "xml"; successXPath: string; dataMap?: Record<string, string> }
+  | { format: "xml"; successXPath: string; dataMap?: Record<string, string>; expectStatus?: number[] }
 
-  | { format: "raw"; matcher: string }
+  | { format: "raw"; matcher: string; expectStatus?: number[] }
 ```
 
 **ParserSpec semantics (normative).** Given the attested response body, a verifier applies the recipe’s ParserSpec to produce a decision and an optional extracted-data map:
