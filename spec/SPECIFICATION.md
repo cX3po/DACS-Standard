@@ -2968,6 +2968,16 @@ derive(party, bundles, windowStart, windowEnd):
 
       r := fetch_and_verify_rating(ratingRef)   // RatingRecord
 
+      // r.signature MUST verify against r.rater's primary-claim key
+
+      // (same key class as a BundleSignature). Bind the rater to THIS session:
+
+      if r.jobId != b.jobId: continue                              // not this session
+
+      if r.rater not in {p.primaryClaim for p in b.parties}: continue   // rater was not a party here
+
+      if r.rater == party: continue                                // no self-rating toward one's own score
+
       if r.target == party AND r.targetRole == "seller":
 
         ratings_targeting_party_as_seller.append(r.value)
@@ -2991,7 +3001,7 @@ derive(party, bundles, windowStart, windowEnd):
   return ReputationDerivation with computed metrics
 ```
 
-"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, verifying its signature, and aggregating the values whose target matches the scored party; the metric is null when no qualifying ratings exist.
+"party_at_fault" is recorded in the bundle’s phaseSummary errorClass (counterparty implies the other party; permanent on a non-cross-chain rail with no settlement-atomicity flag and a successful pre-pay state generally implies the local party at fault). The classification rules are spelled out in the per-phase errorClass tables in chapters 7 and 9. **failed-substrate sessions** are excluded from the party-fault denominator: party_fault_denom = |scoped| − |failed_substrate|. This ensures substrate-induced failures do not damage either party’s reputation. Metrics with denominator > 0 produce numeric values; metrics with denominator == 0 (e.g., bundleCount=0, or all sessions failed-substrate) produce null — distinct from zero, signalling "no signal" rather than "zero signal". The averageBuyerRating / averageSellerRating metrics are computed by walking each bundle’s ratingRefs, fetching the referenced RatingRecord, and verifying its signature against the rater’s primary-claim key (the same key class as a BundleSignature, per §8.4). A RatingRecord MUST be discarded — not aggregated — unless it binds to the session being scored: the deriver MUST require r.jobId == b.jobId, r.rater MUST be one of the bundle’s parties[].primaryClaim, and r.rater MUST NOT equal the scored party (no self-rating). Only the remaining records’ values, whose target matches the scored party, are aggregated; the metric is null when no qualifying ratings exist.
 
 #### 10.5.2 Per-primary-claim keying
 
