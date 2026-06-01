@@ -167,6 +167,7 @@ Terms used in more than one per-stage chapter are defined here once. Per-stage c
 - **Signed.** Carrying an Ed25519 (or equivalent) signature over the RFC 8785 canonical-JSON serialisation of the document’s signed scope, where the signed scope is all fields except the signature field itself.
 - **Canonical form.** RFC 8785 JSON Canonicalization Scheme (JCS) serialisation of the document with the signature(s) field omitted.
 - **Content hash.** sha256 hex of the canonical form.
+- **Numeric safe-integer constraint.** RFC 8785 JCS defines a canonical serialisation only for JSON numbers within the IEEE-754 double range; integers above 2^53−1 (9,007,199,254,740,991) have no reproducible canonical form. Therefore every JSON number in a signed or content-hashed DACS document MUST lie within the IEEE-754 double safe-integer range. Any quantity that may exceed it (token IDs, uint256 values, large on-chain counters or block numbers) MUST be carried as a decimal string (or, where ABI conventions apply, a `0x`-prefixed hex string) rather than a bare JSON number, so that its canonical form and content hash are reproducible across serializers. Producers MUST NOT emit, and readers SHOULD reject, a signed or content-hashed document containing a JSON number outside this range.
 
 ### 7.3 Verification and evidence
 
