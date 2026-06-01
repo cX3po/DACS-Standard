@@ -1,0 +1,44 @@
+# Security Policy
+
+DACS is a draft standard under active development, validated against the
+[Demos Network](https://demos.sh). We take security reports seriously and
+welcome coordinated disclosure from implementers and reviewers.
+
+## Reporting a vulnerability — do NOT open a public issue
+
+If you believe you have found a security vulnerability in the DACS specification,
+a reference implementation, or the substrate primitives DACS depends on, **please
+report it privately**. Publicly filing an exploitable issue exposes an attack
+surface before it can be fixed.
+
+Use either channel:
+
+1. **GitHub Private Vulnerability Reporting** — the *Security* tab → *Report a
+   vulnerability* (enable "Private vulnerability reporting" in repo settings if not
+   already on). This keeps the report private until a fix ships.
+2. **A dedicated security contact** — a monitored address (e.g. `security@kynesys…`)
+   listed here by the steward.
+
+A high-signal report names: the **affected component** (spec §, file path, or
+contract), the **impact** (what an attacker gains), a **minimal reproduction / PoC**
+where possible, and a **suggested fix direction**.
+
+## Scope
+
+In scope: spec rules with security impact (signature/replay/atomicity/authorization
+defects), the reference implementations, and the substrate primitives (SR-1…SR-5) as
+they back conformant DACS flows — including bridge/settlement custody, L2PS channel
+confidentiality/soundness, consensus/validator enforcement, and key handling.
+
+## Coordinated disclosure
+
+We ask reporters to give the steward reasonable time to ship a fix before any public
+write-up, and we will credit reporters who wish to be named. For pre-mainnet issues,
+the goal is to fix quietly and disclose together once patched.
+
+## Signed advisories (optional)
+
+Reporters MAY attach a **signed advisory** — an attestation binding the report to a
+keypair (e.g. the DACS-5 envelope-receipt format) so the steward can verify the
+report's integrity and provenance. This is optional but encouraged for high-severity
+findings; it dogfoods the same verification discipline DACS specifies.
