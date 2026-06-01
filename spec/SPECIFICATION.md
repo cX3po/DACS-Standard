@@ -2998,6 +2998,8 @@ type ReputationDerivation = {
 
   bundleRefs: AttestationRef[]                 // the bundles aggregated
 
+  windowingBasis: "finalisedAt" | "sr2-anchor-timestamp"   // basis used by §10.5.1 windowing; re-derivation MUST use the same one (§10.5.3 determinism receipt)
+
 }
 ```
 
@@ -3105,6 +3107,8 @@ The same wallet may hold multiple primary claims (key:…, did:…, lei:…). DA
 
 Derivation MAY be computed: (a) lazily by a querying party (over a set of bundles they fetched themselves — highest trust); (b) by a DACS-5 catalog operator (similar to a DACS-1 catalog — indexed for performance, but consumers MUST verify against the underlying bundles for high-stakes decisions); (c) on chain via an ERC-8004 reputation registry write per §10.7. Each surface is a different point on the trust / performance trade-off; the algorithm is the same.
 
+**Determinism receipt.** Because the trust / performance trade-off above lets different surfaces feed `derive()` different inputs, a published `ReputationDerivation` MUST be independently reproducible from its own contents. Specifically: (1) `ReputationDerivation.bundleRefs` MUST be exactly the `scoped` set computed by §10.5.1 (the post-window-filter bundles), neither a superset nor a subset of the bundles `derive()` actually aggregated; (2) those `bundleRefs` MUST be serialised in **canonical order — ascending lexicographic by `AttestationRef.contentHash`** (the same tie-break discipline as SE-5 in §8.4.3; because `AttestationRef.contentHash` is a sha256 digest this ordering is total, and two refs sharing a `contentHash` reference byte-identical content and collapse to a single entry), so two derivers that compute identical metrics over the same set cannot disagree on `bundleRefs` byte-order and fail the receipt spuriously; (3) a consumer that re-runs `derive(partyPrimaryClaim, deref(bundleRefs), windowStart, windowEnd)` MUST obtain byte-identical `metrics` and `bundleCount`. Because §10.5.1 lets high-stakes consumers window against the SR-2 anchor timestamp rather than the producer-set `finalisedAt`, two derivers using different windowing bases legitimately compute different `scoped` sets; the determinism receipt is therefore defined **relative to the declared windowing basis**, and a conforming derivation MUST record which basis it used in the `ReputationDerivation.windowingBasis` field (`"finalisedAt"` or `"sr2-anchor-timestamp"`) so the re-derivation uses the same one. This makes any published derivation auditable against its declared inputs across the surfaces above, so two conforming derivers over the same `bundleRefs` and windowing basis cannot silently disagree. It does NOT establish *completeness* — whether `bundleRefs` contains every relevant bundle for the party is out of scope, since no authoritative "which bundles exist" oracle is defined (catalogs are best-effort per §10.5.3(b) and §10.1). Conformance test: given a fixed `bundleRefs` set, window, and windowing basis, `derive()` output is byte-identical across implementations.
+
 ### 10.6 The rate phase (optional)
 
 A DACS-5 phase that produces structured ratings between parties at session end.
@@ -3159,7 +3163,7 @@ EVM-side consumers MAY read ERC-8004 entries as a discovery surface for DACS-5 b
 | Orchestrator | Maintain SessionRecord per §10.3; transition states deterministically; produce bundle on terminal state |
 | Bundle producer | Sign per §10.4.1; anchor per §10.4.2; include all required references per §10.4.3 |
 | Bundle consumer | Recompute canonical hash; verify domain-separated signatures; dereference and validate every contained AttestationRef |
-| Reputation deriver | Apply algorithm in §10.5.1 verbatim; partition by primary claim; treat failed-substrate per the denominator rule; return null for zero-denominator metrics |
+| Reputation deriver | Apply algorithm in §10.5.1 verbatim; partition by primary claim; treat failed-substrate per the denominator rule; return null for zero-denominator metrics; set `bundleRefs` to exactly the §10.5.1 `scoped` set in canonical ascending-`contentHash` order, record the windowing basis used, and emit a derivation reproducible byte-for-byte from `bundleRefs` per the §10.5.3 determinism receipt |
 | Rate phase handler | One RatingRecord per direction; anchor each; include in bundle |
 | ERC-8004 publisher (optional) | §10.7.1 mapping; rate-limit writes; sign with token-owner key |
 
