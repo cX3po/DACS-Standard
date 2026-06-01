@@ -1543,7 +1543,7 @@ type VetCredentialsOutput = PhaseHandlerResult & {
 
       compositeRecord: AttestationRef
 
-      overallDecision: "pass" | "fail" | "indeterminate"
+      overallDecision: "pass" | "fail" | "indeterminate" | "error"
 
     }
 
