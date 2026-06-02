@@ -52,10 +52,24 @@ spec, the section is cited.
 | Cross-substrate portability test | In progress | Demonstrate an unmodified `verifyBundle` end-to-end on a non-Demos substrate (a filesystem-backed SR-2 candidate has been exercised; §11.3). |
 | PA-2 → PA-3 multi-party governance | Anticipated | Constitution of a multi-party steward body to replace the single-signer recipe and rail registries (§11.2.6). |
 
+## Tooling (non-normative)
+
+These are builder-facing tools *around* the standard, not part of its normative
+surface. Welcomed as community contributions under the "contributor prototypes,
+steward owns the standard" model; if a tool proves solid the steward may designate
+it canonical. Tools that mirror the spec MUST generate from this repo (so they
+cannot drift from the source of truth) and version-stamp which DACS version they
+reflect.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| DACS spec-reference MCP server | Anticipated (community) | Query the spec by rule/section, fetch artifact schemas (Listing, IdentityBundle, AgreementDocument, SettlementEvidence, AttestationBundle, …), list rule families (SE-*, HTLC-*, PC-*, RAV-*), pull the §14 conformance vectors. Read/search/fetch only. |
+| DACS builder/validator MCP server | Anticipated (community) | Construct and verify bundles, run conformance vectors. Follow-on to the reference MCP; held until the reference implementation + §14 vectors stabilise so it doesn't harden against a moving API. |
+
 ## Out of scope (not roadmap)
 
 - **DTR** — node-internal relay, below the DACS abstraction; no DACS-layer rail or parameter.
-- **MCP** — agent-to-tool, not agent-to-agent commerce. It composes *adjacent* to DACS (tool discovery sits below DACS; an MCP server can expose a DACS catalog above it) without a normative binding in the standard.
+- **MCP (as a normative binding)** — agent-to-tool, not agent-to-agent commerce. It composes *adjacent* to DACS (tool discovery sits below DACS; an MCP server can expose a DACS catalog above it) without a normative binding in the standard. (A *spec-reference* MCP server is a separate, welcomed tooling item — see Tooling above.)
 
 ---
 
