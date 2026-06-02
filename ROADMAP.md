@@ -49,6 +49,8 @@ The roadmap has two parts:
 | `ReputationHint` at discovery | Candidate | Surface a DACS-5 summary (e.g. `{completedSessions, disputeRate}`) in the DACS-1 listing so buying agents can filter before vetting. Optional, additive (§6.3). |
 | `ServiceCategory` taxonomy + category-scoped reputation | Candidate | Listing-level category tag (recommended vocabulary) so DACS-5 reputation can be queried per-domain ("20+ completed data-analysis sessions") rather than as one undifferentiated score (§6.3, §10.5). |
 | Primary-claim revocation / compromise signalling | Candidate; design-issue first | A way to publish "this primary claim is compromised" so reputation does not silently transfer to an attacker after key theft. Hard part is revocation without the old key — needs an RFC before a PR. |
+| `identityTier` on IdentityBundle (#103) | Candidate | Optional, **derived-not-self-declared** trust tier (`institutional` / `verified` / `self-declared`) computed from the verified claims present, giving downstream a pre-reputation trust signal (cold-start). Listings can gate on it (§6.3). |
+| `warnings` array on CompositeVerificationRecord (#102) | Candidate | Optional signal distinguishing a *transient* authority failure (5xx, rate-limit, DNS timeout — retryable, with `suggestedRetryAfterMs`) from a permanent fail, so DACS-3 can decide retry-vs-proceed-vs-block. Additive; does not change required/oneOf/supplementary aggregation (§7.7/§7.8). |
 
 ## Negotiation (DACS-3)
 
@@ -65,6 +67,7 @@ The roadmap has two parts:
 |------|--------|-------|
 | DACS-X (dispute / execution-verification) | Anticipated; prototype in progress | Dispute initiation, arbitrator credentialing via DACS-1/2, named-arbitrator transcript disclosure, superseding outcome bundles (§11.2.1). The accountability layer — makes the session record adjudicable; it does not hide session content. |
 | DACS-5 → ERC-8004 cross-claim hint | Candidate | Optional bridge for the primary-claim (DACS-5) vs token (ERC-8004) reputation-keying divergence (§10.7). For v0.1 the divergence stands and the §10.7 fetch-the-bundle requirement is the mitigation. |
+| `suspiciousPatternFlags` on ReputationRecord + min-bundleCount gating advice (#101) | Candidate; design-issue first | Optional behavioural-Sybil signal for low-tier selectors (e.g. single-counterparty clustering, zero-variance outcomes). Flags themselves are fine as an **open vocabulary**; the normative-threshold and min-`bundleCount` gating parts need an RFC so the standard doesn't hard-code heuristics that belong in the implementation layer (§10.5). Pairs with `identityTier` (#103) — identity quality + behavioural quality as two orthogonal signals. |
 
 ## Cross-substrate & governance
 
