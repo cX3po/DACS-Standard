@@ -5,13 +5,28 @@ a rail, method, or capability earns normative status when a live settlement /
 verification path exists *and* a reference implementation exercises it. Everything
 below is **anticipated follow-on work** — named honestly, with **no committed
 dates**. DACS operates under progressive-anchoring phase PA-2 (single steward,
-KyneSys Labs); we do not commit timelines we cannot guarantee. Items land in future
-minor versions (v0.2, v0.3, …) per the independent per-stage versioning in
-[CONTRIBUTING](./CONTRIBUTING.md).
+KyneSys Labs); we do not commit timelines we cannot guarantee.
 
 This document is **informative**; the normative source is the
 [specification](./spec/SPECIFICATION.md). Where an item is already described in the
 spec, the section is cited.
+
+The roadmap has two parts:
+
+- **Part 1 — Standard (normative).** Work that changes the *specification* itself —
+  new rails, methods, rules, governance. These land in future minor versions
+  (v0.2, v0.3, …) per the independent per-stage versioning in
+  [CONTRIBUTING](./CONTRIBUTING.md), merge through the steward, and can affect
+  conformance.
+- **Part 2 — Ecosystem & tooling (non-normative).** Supporting artifacts *around*
+  the standard — tooling, documentation, reference implementations, test vectors.
+  These never change the spec or conformance, are welcomed as community
+  contributions under a "contributor prototypes, steward owns the standard" model,
+  and may be designated canonical by the steward if they prove solid.
+
+---
+
+# Part 1 — Standard (normative)
 
 ## Settlement rails (DACS-4)
 
@@ -56,28 +71,48 @@ spec, the section is cited.
 | Item | Status | Notes |
 |------|--------|-------|
 | SR-3 / SR-4 wire-protocol harmonisation | Anticipated (v2) | v0.1 specifies SR-3 and SR-4 at the trust-property level only; cross-substrate sessions cannot complete for SR-3- or SR-4-dependent phases until wire formats are aligned (§5). |
-| Cross-substrate portability test | In progress | Demonstrate an unmodified `verifyBundle` end-to-end on a non-Demos substrate (a filesystem-backed SR-2 candidate has been exercised; §11.3). |
 | PA-2 → PA-3 multi-party governance | Anticipated | Constitution of a multi-party steward body to replace the single-signer recipe and rail registries (§11.2.6). |
 | AML / Travel-Rule compliance-metadata hook | Candidate; design-issue first | An optional extension point carrying compliance metadata (e.g. a Travel-Rule flag) for flows that touch real money (fiat via AP2, stablecoins), so DACS is usable in regulated markets. Hook only — DACS does not itself perform AML. |
 
-## Tooling (non-normative)
+---
 
-These are builder-facing tools *around* the standard, not part of its normative
-surface. Welcomed as community contributions under the "contributor prototypes,
-steward owns the standard" model; if a tool proves solid the steward may designate
-it canonical. Tools that mirror the spec MUST generate from this repo (so they
-cannot drift from the source of truth) and version-stamp which DACS version they
-reflect.
+# Part 2 — Ecosystem & tooling (non-normative)
+
+Builder-facing artifacts *around* the standard. None change the spec or conformance.
+Welcomed as community contributions under the "contributor prototypes, steward owns
+the standard" model; if an artifact proves solid the steward may designate it
+canonical. Anything that **mirrors** the spec (a reference tool, a generated doc)
+MUST generate from this repo — so it cannot drift from the source of truth — and
+version-stamp which DACS version it reflects.
+
+## Tooling
 
 | Item | Status | Notes |
 |------|--------|-------|
 | DACS spec-reference MCP server | Anticipated (community) | Query the spec by rule/section, fetch artifact schemas (Listing, IdentityBundle, AgreementDocument, SettlementEvidence, AttestationBundle, …), list rule families (SE-*, HTLC-*, PC-*, RAV-*), pull the §14 conformance vectors. Read/search/fetch only. |
 | DACS builder/validator MCP server | Anticipated (community) | Construct and verify bundles, run conformance vectors. Follow-on to the reference MCP; held until the reference implementation + §14 vectors stabilise so it doesn't harden against a moving API. |
 
+## Documentation
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Operational builders guide | Anticipated | A practical integration guide distinct from the existing [why-DACS guide](./docs/builders-guide.md): capital / float requirements, escrow sizing, behaviour when undercapitalised mid-session, key custody / HSM practice, and settlement-finality integration. These are implementation/ops concerns — deliberately **not** normative spec material. |
+
+## Reference implementations & test vectors
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `agent-commerce-demo` | Live | KyneSys Labs reference implementation; runs an end-to-end DACS-1 … DACS-5 session against Demos testnet. |
+| `pathos-dacs-ref` | Live (third-party) | PATH-OS Labs' independent implementation (DACS-1 publisher, DACS-2 GLEIF verifier, DACS-5 envelope-receipt verifier CLI) — the empirical third-party-implementability evidence (§11.3). |
+| §14 conformance test vectors | In progress | Machine-runnable vectors for the §14 conformance plan, so implementers can self-check. Grows as contributor work (e.g. DACS-X) produces cases. |
+| Cross-substrate portability test | In progress | Demonstrate an unmodified `verifyBundle` end-to-end on a non-Demos substrate (a filesystem-backed SR-2 candidate has been exercised) — the artifact-level proof behind the §11.3 portability claim. |
+
+---
+
 ## Out of scope (not roadmap)
 
 - **DTR** — node-internal relay, below the DACS abstraction; no DACS-layer rail or parameter.
-- **MCP (as a normative binding)** — agent-to-tool, not agent-to-agent commerce. It composes *adjacent* to DACS (tool discovery sits below DACS; an MCP server can expose a DACS catalog above it) without a normative binding in the standard. (A *spec-reference* MCP server is a separate, welcomed tooling item — see Tooling above.)
+- **MCP (as a normative binding)** — agent-to-tool, not agent-to-agent commerce. It composes *adjacent* to DACS (tool discovery sits below DACS; an MCP server can expose a DACS catalog above it) without a normative binding in the standard. (A *spec-reference* MCP server is a separate, welcomed tooling item — see Part 2 → Tooling.)
 
 ---
 
