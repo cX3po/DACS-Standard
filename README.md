@@ -83,6 +83,7 @@ substrate-to-primitive mapping and production status. The unified SDK is [`@kyne
 | [`docs/builders-guide.md`](./docs/builders-guide.md) | A technical case for builders — what problems DACS solves and how to evaluate it honestly. |
 | [`docs/flow-trace.md`](./docs/flow-trace.md) | End-to-end happy path as SDK-mapped pseudocode, with a sequence diagram and a verified SDK-compatibility note. |
 | [`CHANGELOG.md`](./CHANGELOG.md) | Normative change history. Start here if you implemented against an earlier draft. |
+| [`ROADMAP.md`](./ROADMAP.md) | Anticipated follow-on work (informative). What's deferred beyond v0.1 and why — no committed dates. |
 
 **New here?** Read the [builders guide](./docs/builders-guide.md) first, then the
 [flow trace](./docs/flow-trace.md), then the [specification](./spec/SPECIFICATION.md).
