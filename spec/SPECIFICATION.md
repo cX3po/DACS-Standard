@@ -2317,7 +2317,7 @@ type RailDefinition = {
     proposedBy: ClaimReference;
     acceptedAt: number;
     supersedes?: number;
-    anchoring: "in-code" | "single-signer" | "multisig";   // progressive-anchoring phase; see §9.4.4 (line 2340) and §7.4.4
+    anchoring: "in-code" | "single-signer" | "multisig";   // progressive-anchoring phase (PA-1/PA-2/PA-3); see §9.4.3 and §7.4.4
     emergency?: { isEmergency: true; failureObservation: string };   // present iff this is an emergency revision
     deprecated?: boolean;
     deprecationReason?: string                              // required when deprecated is true
@@ -3223,7 +3223,7 @@ DACS composes with the existing open ecosystem and does not seek to replace stan
 
 ### 11.2 Follow-on topics
 
-Six areas are deliberately out of scope for v0.1 and intended for subsequent standards.
+Seven areas are deliberately out of scope for v0.1 and intended for subsequent standards.
 
 #### 11.2.1 Dispute resolution (DACS-X, anticipated)
 
